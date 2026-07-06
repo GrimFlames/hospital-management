@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lifeline Medicare Centre - Hospital Management System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Auth Screen overlay -->
+  <div id="auth-screen" class="auth-screen-wrapper">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div style="display: flex; justify-content: center; margin-bottom: 0.5rem;">
+          <svg viewBox="0 0 100 100" width="60" height="60">
+            <path d="M50 30 C 40 10, 15 20, 20 50 C 23 65, 38 85, 50 85 C 62 85, 77 65, 80 50 C 85 20, 60 10, 50 30 Z" fill="none" stroke="var(--color-cyan)" stroke-width="4.5"/>
+            <path d="M50 35 L50 75" stroke="var(--color-danger)" stroke-width="4.5"/>
+            <circle cx="50" cy="30" r="4.5" fill="var(--color-danger)"/>
+            <path d="M50 50 Q40 55 35 62" fill="none" stroke="var(--color-danger)" stroke-width="2.5"/>
+            <path d="M50 55 Q60 60 65 67" fill="none" stroke="var(--color-danger)" stroke-width="2.5"/>
+          </svg>
+        </div>
+        <h2>LIFELINE MEDICARE CENTRE</h2>
+        <p>Ganga Nagar, Meerut, Uttar Pradesh</p>
+      </div>
+
+      <!-- Tab Selectors -->
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="tab-login">Staff Login</button>
+        <button type="button" class="auth-tab" id="tab-register">Register Staff</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="auth-login-form" class="auth-form active">
+        <div id="login-error-msg" class="auth-error-msg" style="display:none;"></div>
+        <div class="form-group">
+          <label for="login-username">Staff Username</label>
+          <input type="text" id="login-username" placeholder="doctor / receptionist" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1.5rem; width:100%;">
+          <i data-lucide="log-in" style="width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Log In to Console
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="auth-register-form" class="auth-form">
+        <div id="register-error-msg" class="auth-error-msg" style="display:none;"></div>
+        <div class="form-group">
+          <label for="register-name">Full Name (with Title)</label>
+          <input type="text" id="register-name" placeholder="e.g. Dr. Aditi Chaudhary" required>
+        </div>
+        <div class="form-group">
+          <label for="register-username">Choose Username</label>
+          <input type="text" id="register-username" placeholder="e.g. aditi_c" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="register-password">Password</label>
+          <input type="password" id="register-password" placeholder="••••••••" required autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="register-role">Staff Role</label>
+          <select id="register-role" required style="width: 100%; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); border-radius: var(--radius-md); color: #fff;">
+            <option value="receptionist" style="background:#0f172a;">Reception Desk Staff</option>
+            <option value="doctor" style="background:#0f172a;">Doctor / Medical Specialist</option>
+            <option value="pharmacist" style="background:#0f172a;">Pharmacist / Chemist</option>
+            <option value="radiologist" style="background:#0f172a;">Radiology Lab Tech</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-success btn-block" style="margin-top: 1.5rem; width:100%;">
+          <i data-lucide="user-plus" style="width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Register & Log In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="logo-container" style="flex-direction: column; align-items: flex-start; gap: 4px; padding: 1.5rem 1.5rem 1rem 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="logo-icon" style="background: var(--color-cyan); color: #0f172a; width: 28px; height: 28px; line-height: 28px; font-size: 0.95rem; font-weight: 700; border-radius: 6px; display: flex; align-items: center; justify-content: center;">L</div>
+          <div class="logo-text" style="font-size:1.05rem; font-weight: 700; letter-spacing:-0.5px;">Lifeline Medicare</div>
+        </div>
+        <div style="margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); width: 100%; padding-top: 6px;">
+          <div style="font-size: 0.82rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 4px;">
+            <i data-lucide="stethoscope" style="width: 12px; height: 12px; color: var(--color-cyan);"></i>
+            <span>Dr. Aditi Chaudhary</span>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-secondary); margin-left: 16px;">B.A.M.S. (Physician)</div>
+        </div>
+      </div>
+      
+      <!-- General Staff Navigation -->
+      <ul class="nav-menu" id="staff-nav-menu">
+        <li class="nav-item active" data-view="receptionist">
+          <a class="nav-link">
+            <i data-lucide="clipboard-list"></i>
+            <span>Reception Desk</span>
+          </a>
+        </li>
+        <li class="nav-item" data-view="billing-consult">
+          <a class="nav-link">
+            <i data-lucide="stethoscope"></i>
+            <span>Consultation Bills</span>
+          </a>
+        </li>
+        <li class="nav-item" data-view="billing-meds">
+          <a class="nav-link">
+            <i data-lucide="receipt"></i>
+            <span>Pharmacy Bills</span>
+          </a>
+        </li>
+
+        <li class="nav-item" data-view="pharmacy">
+          <a class="nav-link">
+            <i data-lucide="pill"></i>
+            <span>Pharmacy</span>
+          </a>
+        </li>
+        <li class="nav-item" data-view="radiology">
+          <a class="nav-link">
+            <i data-lucide="activity"></i>
+            <span>Radiology Lab</span>
+          </a>
+        </li>
+      </ul>
+
+      <!-- Doctor Consultation Navigation -->
+      <ul class="nav-menu" id="doctor-nav-menu" style="display: none;">
+        <li class="nav-item active" data-view="doc-queue">
+          <a class="nav-link">
+            <i data-lucide="users"></i>
+            <span>Patient Queue</span>
+          </a>
+        </li>
+        <li class="nav-item disabled-nav" data-view="doc-complaints" id="nav-doc-complaints">
+          <a class="nav-link">
+            <i data-lucide="message-square"></i>
+            <span>Complaints</span>
+          </a>
+        </li>
+        <li class="nav-item disabled-nav" data-view="doc-history" id="nav-doc-history">
+          <a class="nav-link">
+            <i data-lucide="history"></i>
+            <span>Past History</span>
+          </a>
+        </li>
+        <li class="nav-item disabled-nav" data-view="doc-diagnosis" id="nav-doc-diagnosis">
+          <a class="nav-link">
+            <i data-lucide="stethoscope"></i>
+            <span>Diagnosis</span>
+          </a>
+        </li>
+        <li class="nav-item disabled-nav" data-view="doc-meds" id="nav-doc-meds">
+          <a class="nav-link">
+            <i data-lucide="pill"></i>
+            <span>Medication & Remedy</span>
+          </a>
+        </li>
+        <li class="nav-item disabled-nav" data-view="doc-tests" id="nav-doc-tests">
+          <a class="nav-link">
+            <i data-lucide="activity"></i>
+            <span>Tests & Investigations</span>
+          </a>
+        </li>
+        <li class="nav-item" data-view="registry">
+          <a class="nav-link">
+            <i data-lucide="database"></i>
+            <span>Central Registry</span>
+          </a>
+        </li>
+        <li class="nav-item" data-view="staff-mgmt" id="nav-doc-staff" style="display: none;">
+          <a class="nav-link">
+            <i data-lucide="users-round"></i>
+            <span>Staff Directory</span>
+          </a>
+        </li>
+      </ul>
+      
+      <div class="sidebar-footer">
+        <p>Lifeline Medicare Centre v1.0</p>
+        <p>Phase 1 ➔ Phase 2 ➔ Phase 3</p>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="page-title">
+          <h1 id="view-title">Reception Desk</h1>
+          <p id="view-subtitle">Phase 1: Patient registration, check-in and vitals collection.</p>
+        </div>
+        <div class="system-status">
+          <div style="text-align: right; margin-right: 1rem;" id="header-user-info">
+            <span id="header-user-name" style="font-weight: 600; color: #fff; font-size: 0.85rem; display: block;">Dr. Aditi Chaudhary</span>
+            <span id="header-user-role" style="font-size: 0.72rem; color: var(--color-cyan); font-weight: 500; text-transform: uppercase;">Doctor</span>
+          </div>
+          <button id="btn-logout" class="btn btn-secondary btn-sm" style="border-color: rgba(255, 255, 255, 0.15); color: #ccc; margin-right: 0.5rem;">
+            <i data-lucide="log-out" style="width: 14px; height: 14px;"></i> Log Out
+          </button>
+          <button id="btn-clear-db" class="btn btn-secondary btn-sm" style="border-color: rgba(239, 68, 68, 0.3); color: #f87171;">
+            <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Clear Data
+          </button>
+          <div class="status-badge">
+            <span class="status-dot"></span>
+            <span>HMS Server Online</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- View 1: Receptionist Console (Phase 1) -->
+      <section id="view-receptionist" class="view-panel active">
+        <!-- Dashboard Stats Bar -->
+        <div class="stats-row" id="receptionist-stats-row">
+          <div class="stats-card metric-active">
+            <div class="stats-card-label">
+              <i data-lucide="users"></i> Active Patients
+            </div>
+            <div class="stats-card-value" id="stats-active-patients">0</div>
+          </div>
+          <div class="stats-card metric-discharged">
+            <div class="stats-card-label">
+              <i data-lucide="user-check"></i> Discharged Today
+            </div>
+            <div class="stats-card-value" id="stats-discharged">0</div>
+          </div>
+          <div class="stats-card metric-consult">
+            <div class="stats-card-label">
+              <i data-lucide="indian-rupee"></i> Consult Revenue
+            </div>
+            <div class="stats-card-value" id="stats-consult-revenue">₹0.00</div>
+          </div>
+          <div class="stats-card metric-pharmacy">
+            <div class="stats-card-label">
+              <i data-lucide="pill"></i> Pharmacy Revenue
+            </div>
+            <div class="stats-card-value" id="stats-pharmacy-revenue">₹0.00</div>
+          </div>
+        </div>
+
+        <!-- Receptionist Navigation Tabs -->
+        <div class="reception-tabs" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; background: rgba(255, 255, 255, 0.02); padding: 0.5rem; border-radius: var(--radius-md); border: 1px solid var(--glass-border); width: fit-content;">
+          <button type="button" class="btn btn-primary reception-tab active" data-tab="intake" style="padding: 0.5rem 1.25rem; font-size: 0.9rem;">
+            <i data-lucide="user-plus" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i> Patient Intake Desk
+          </button>
+        </div>
+
+        <!-- Intake Tab Pane -->
+        <div id="intake-tab-pane" class="reception-tab-pane">
+          <div class="dashboard-grid">
+            <!-- Main Work area -->
+            <div class="workspace-area">
+              <!-- Search Match returning patient -->
+              <div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem; border-color: rgba(6, 182, 212, 0.25);">
+                <label style="font-weight: 600; margin-bottom: 0.5rem; display: block; color: var(--text-primary);">
+                  <i data-lucide="search" style="width: 14px; height: 14px; vertical-align: middle; color: var(--color-cyan);"></i> Search Existing Patient (Match & Start New Visit)
+                </label>
+                <div class="search-bar" style="margin-bottom: 0;">
+                  <div class="search-input-wrapper">
+                    <i data-lucide="users"></i>
+                    <input type="text" id="reception-search-input" placeholder="Search registry by Name, ID, or Phone to match returning patient...">
+                  </div>
+                </div>
+                <div id="reception-search-results" class="patient-list" style="display: none; margin-top: 1rem; border-top: 1px solid var(--glass-border); padding-top: 1rem;">
+                  <!-- Populated dynamically with match options -->
+                </div>
+              </div>
+
+              <!-- Match Alert Banner -->
+              <div id="reception-match-alert" style="display:none; background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); padding: 0.75rem 1rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; font-size: 0.9rem; color: #fff; align-items: center; justify-content: space-between;">
+                <span style="display: flex; align-items: center; gap: 0.5rem;">
+                  <i data-lucide="user-check" style="color: var(--color-cyan); width: 18px; height: 18px;"></i>
+                  <span>Matched returning record: <strong id="matched-patient-display">-</strong>. Starting new visit.</span>
+                </span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-match" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">Cancel Match</button>
+              </div>
+
+              <!-- Registration Form -->
+              <div class="card">
+                <h2 class="card-title"><i data-lucide="user-plus"></i> Patient Intake Form</h2>
+                <form id="reception-intake-form">
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label for="p-name">Full Name</label>
+                      <input type="text" id="p-name" placeholder="Aarav Sharma" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="p-age">Age</label>
+                      <input type="number" id="p-age" placeholder="32" min="0" max="130" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="p-gender">Gender</label>
+                      <select id="p-gender" required>
+                        <option value="" disabled selected>Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="p-phone">Phone Number</label>
+                      <input type="text" id="p-phone" placeholder="987xxxxxxx" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="p-blood">Blood Group</label>
+                      <select id="p-blood" required>
+                        <option value="" disabled selected>Select</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+                        <option value="Unknown">Unknown</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <h3 class="card-title" style="font-size: 1.05rem; margin-top: 2rem; border-bottom: none;"><i data-lucide="heart-pulse"></i> Patient Vitals (Required)</h3>
+                  <div class="vitals-grid">
+                    <div class="form-group">
+                      <label for="v-temp">Temperature</label>
+                      <div class="vital-input-wrapper">
+                        <input type="number" step="0.1" id="v-temp" placeholder="98.6" required>
+                        <span class="vital-unit">°F</span>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="v-weight">Weight</label>
+                      <div class="vital-input-wrapper">
+                        <input type="number" step="0.1" id="v-weight" placeholder="70" required>
+                        <span class="vital-unit">kg</span>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="v-bp">Blood Pressure</label>
+                      <div class="vital-input-wrapper">
+                        <input type="text" id="v-bp" placeholder="120/80" pattern="^\d{2,3}\/\d{2,3}$" title="Format: Sys/Dias (e.g. 120/80)" required>
+                        <span class="vital-unit">mmHg</span>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="v-pulse">Pulse Rate</label>
+                      <div class="vital-input-wrapper">
+                        <input type="number" id="v-pulse" placeholder="72" required>
+                        <span class="vital-unit">bpm</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                    <button type="submit" class="btn btn-primary"><i data-lucide="send"></i> Dispatch to Doctor</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Queue Panel -->
+            <div class="side-panel">
+              <div class="card" style="height: 100%; margin-bottom: 0;">
+                <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="users"></i> Check-in Queue</h2>
+                <div id="reception-queue" class="patient-list">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 1.5: Consultation Billing Desk -->
+      <section id="view-billing-consult" class="view-panel">
+        <div class="dashboard-grid">
+          <!-- Left side: Patient list for Billing -->
+          <div class="side-panel">
+            <div class="card" style="height: 100%; margin-bottom: 0; min-height: 500px;">
+              <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="receipt"></i> Billing Queue</h2>
+              <div id="billing-queue-consult" class="patient-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- Right side: Selected patient billing card -->
+          <div class="workspace-area">
+            <!-- Billing Details Card -->
+            <div id="billing-details-consult-card" style="display: none;">
+              <!-- Patient Info Banner -->
+              <div class="active-patient-banner card" id="billing-patient-banner-consult" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- Consultation Billing Card (Full Width) -->
+              <div class="card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                  <h3 style="font-family: var(--font-display); font-size: 1.1rem; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-lucide="stethoscope" style="color: var(--color-cyan); width: 18px; height: 18px;"></i> Consultation Bill
+                  </h3>
+                  <span id="billing-consult-status-badge" class="badge badge-waiting">Unpaid</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                  <div class="form-group">
+                    <label style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">Consultation Fee (₹)</label>
+                    <input type="number" id="bill-consult-fee" class="form-control" value="1000" min="0" style="background: rgba(15, 23, 42, 0.6); color: #fff; border-color: rgba(255,255,255,0.1);">
+                  </div>
+
+                  <div class="form-group">
+                    <label style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">Discount Options</label>
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.35rem; margin-bottom: 0.5rem;">
+                      <button type="button" class="btn btn-secondary btn-sm btn-discount-preset" data-pct="0" style="padding: 0.35rem 0.2rem;">0%</button>
+                      <button type="button" class="btn btn-secondary btn-sm btn-discount-preset" data-pct="10" style="padding: 0.35rem 0.2rem;">10%</button>
+                      <button type="button" class="btn btn-secondary btn-sm btn-discount-preset" data-pct="20" style="padding: 0.35rem 0.2rem;">20%</button>
+                      <button type="button" class="btn btn-secondary btn-sm btn-discount-preset" data-pct="50" style="padding: 0.35rem 0.2rem;">50%</button>
+                      <button type="button" class="btn btn-secondary btn-sm btn-discount-preset" data-pct="custom" style="padding: 0.35rem 0.2rem;">Custom</button>
+                    </div>
+                    <div id="custom-discount-wrapper" style="display: none;">
+                      <input type="number" id="bill-discount-custom" class="form-control" placeholder="Discount Amount (₹)" min="0" style="background: rgba(15, 23, 42, 0.6); color: #fff; border-color: rgba(255,255,255,0.1);">
+                    </div>
+                  </div>
+
+                  <div style="background: rgba(15, 23, 42, 0.4); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-secondary);">
+                      <span>Gross Fee:</span>
+                      <span id="bill-consult-gross">₹1000.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #f87171;">
+                      <span>Discount:</span>
+                      <span id="bill-consult-disc-val">-₹0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 1rem; font-weight: 700; color: #fff; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 0.5rem; margin-top: 0.25rem;">
+                      <span>Net Payable:</span>
+                      <span id="bill-consult-payable" style="color: var(--color-cyan);">₹1000.00</span>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-primary" id="btn-pay-consult" style="flex: 1;"><i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Pay</button>
+                    <button type="button" class="btn btn-secondary" id="btn-print-consult" style="flex: 1;"><i data-lucide="printer" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Print</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Billing Placeholder -->
+            <div id="billing-placeholder-consult-card" class="card" style="text-align: center; padding: 4rem 2rem;">
+              <i data-lucide="receipt" style="width: 48px; height: 48px; color: var(--color-cyan); margin-bottom: 1rem;"></i>
+              <h2 style="font-family: var(--font-display); font-size: 1.5rem; color: #fff; margin-bottom: 0.5rem;">Select Patient for Consultation Bill</h2>
+              <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto;">Choose a patient from the billing queue on the left to view, edit, and print their consultation invoice.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 1.6: Pharmacy Billing Desk -->
+      <section id="view-billing-meds" class="view-panel">
+        <div class="dashboard-grid">
+          <!-- Left side: Patient list for Billing -->
+          <div class="side-panel">
+            <div class="card" style="height: 100%; margin-bottom: 0; min-height: 500px;">
+              <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="receipt"></i> Billing Queue</h2>
+              <div id="billing-queue-meds" class="patient-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- Right side: Selected patient billing card -->
+          <div class="workspace-area">
+            <!-- Billing Details Card -->
+            <div id="billing-details-meds-card" style="display: none;">
+              <!-- Patient Info Banner -->
+              <div class="active-patient-banner card" id="billing-patient-banner-meds" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- Medicine Billing Card (Full Width) -->
+              <div class="card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                  <h3 style="font-family: var(--font-display); font-size: 1.1rem; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-lucide="pill" style="color: var(--color-cyan); width: 18px; height: 18px;"></i> Pharmacy Prescription Bill
+                  </h3>
+                  <span id="billing-meds-status-badge" class="badge badge-waiting">Unpaid</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                  <!-- Awaiting Pricing Placeholder -->
+                  <div id="billing-meds-awaiting" style="display: none; text-align: center; padding: 2rem 1rem; color: var(--text-secondary);">
+                    <i data-lucide="clock" style="width: 32px; height: 32px; color: var(--color-warning); margin-bottom: 0.5rem;"></i>
+                    <p style="font-size: 0.9rem; margin: 0;">Awaiting medicine pricing input from the pharmacy desk.</p>
+                  </div>
+
+                  <!-- Medicine List Table -->
+                  <div id="billing-meds-table-wrapper" style="display: block;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; color: var(--text-secondary);">
+                      <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left;">
+                          <th style="padding: 0.5rem 0.25rem; color: #fff;">Medicine Details</th>
+                          <th style="padding: 0.5rem 0.25rem; text-align: right; color: #fff;">Price (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="billing-meds-tbody">
+                        <!-- Populated dynamically -->
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div id="billing-meds-summary-box" style="background: rgba(15, 23, 42, 0.4); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 1rem; font-weight: 700; color: #fff;">
+                      <span>Meds Total:</span>
+                      <span id="bill-meds-total" style="color: var(--color-cyan);">₹0.00</span>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-primary" id="btn-pay-meds" style="flex: 1;"><i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Pay</button>
+                    <button type="button" class="btn btn-secondary" id="btn-print-meds" style="flex: 1;"><i data-lucide="printer" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Print</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Billing Placeholder -->
+            <div id="billing-placeholder-meds-card" class="card" style="text-align: center; padding: 4rem 2rem;">
+              <i data-lucide="receipt" style="width: 48px; height: 48px; color: var(--color-cyan); margin-bottom: 1rem;"></i>
+              <h2 style="font-family: var(--font-display); font-size: 1.5rem; color: #fff; margin-bottom: 0.5rem;">Select Patient for Pharmacy Bill</h2>
+              <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto;">Choose a patient from the billing queue on the left to view, collect payments, and print their pharmacy medicine bill.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Doctor View 1: Patient Queue -->
+      <section id="view-doc-queue" class="view-panel">
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+          <div class="workspace-area">
+            <!-- Dashboard Stats Bar -->
+            <div class="stats-row" id="doctor-stats-row">
+              <div class="stats-card metric-active">
+                <div class="stats-card-label">
+                  <i data-lucide="users"></i> Active Patients
+                </div>
+                <div class="stats-card-value" id="doc-stats-active-patients">0</div>
+              </div>
+              <div class="stats-card metric-discharged">
+                <div class="stats-card-label">
+                  <i data-lucide="user-check"></i> Discharged Today
+                </div>
+                <div class="stats-card-value" id="doc-stats-discharged">0</div>
+              </div>
+              <div class="stats-card metric-consult">
+                <div class="stats-card-label">
+                  <i data-lucide="indian-rupee"></i> Consult Revenue
+                </div>
+                <div class="stats-card-value" id="doc-stats-consult-revenue">₹0.00</div>
+              </div>
+              <div class="stats-card metric-pharmacy">
+                <div class="stats-card-label">
+                  <i data-lucide="pill"></i> Pharmacy Revenue
+                </div>
+                <div class="stats-card-value" id="doc-stats-pharmacy-revenue">₹0.00</div>
+              </div>
+            </div>
+
+            <!-- Doctor Console Navigation Options for other phases -->
+            <div id="doctor-phase-navigator" class="card" style="display: none; padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(30, 41, 59, 0.4); border: 1px dashed rgba(6, 182, 212, 0.25);">
+              <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 0.75rem 0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+                <i data-lucide="layout-grid" style="width: 14px; height: 14px; color: var(--color-cyan);"></i> Hospital Console Redirects (Master Access)
+              </p>
+              <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-sm btn-redirect" data-target="receptionist" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                  <i data-lucide="clipboard-list" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle; color: var(--color-cyan);"></i> Go to Reception Desk
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm btn-redirect" data-target="pharmacy" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                  <i data-lucide="pill" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle; color: var(--color-brand);"></i> Go to Pharmacy Dispensary
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm btn-redirect" data-target="radiology" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                  <i data-lucide="activity" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle; color: var(--color-danger);"></i> Go to Radiology Console
+                </button>
+              </div>
+            </div>
+
+            <!-- Search / Search Results panel -->
+            <div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
+              <div class="search-bar">
+                <div class="search-input-wrapper">
+                  <i data-lucide="search"></i>
+                  <input type="text" id="doctor-search-input" placeholder="Search patient by Name or ID...">
+                </div>
+              </div>
+              <div id="doctor-search-results" class="patient-list" style="display: none; margin-top: 1rem; border-top: 1px solid var(--glass-border); padding-top: 1rem;">
+                <!-- Populated with search results -->
+              </div>
+            </div>
+
+            <!-- Waiting patients list -->
+            <div class="card" style="margin-bottom: 0;">
+              <h2 class="card-title" style="margin-bottom: 1rem; font-family: var(--font-display);"><i data-lucide="users"></i> Waiting Patients</h2>
+              <div id="doctor-queue" class="patient-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Doctor View 2: Complaints -->
+      <section id="view-doc-complaints" class="view-panel">
+        <div class="active-patient-banner card" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);">
+          <!-- Shared Patient Info Banner (populated dynamically) -->
+        </div>
+
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+          <div class="workspace-area">
+            <div class="card" style="padding: 1.5rem;">
+              <!-- Vitals Display -->
+              <h3 style="font-size: 0.95rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.75rem; font-weight:600;">Vitals Checked by Receptionist</h3>
+              <div class="vitals-container" style="margin-bottom: 1.5rem;">
+                <div class="vital-card temp">
+                  <span class="vital-label"><i data-lucide="thermometer" style="color: var(--color-danger); width: 14px;"></i> Temp</span>
+                  <span class="vital-value" id="doc-vital-temp">-</span>
+                </div>
+                <div class="vital-card weight">
+                  <span class="vital-label"><i data-lucide="scale" style="color: var(--color-cyan); width: 14px;"></i> Weight</span>
+                  <span class="vital-value" id="doc-vital-weight">-</span>
+                </div>
+                <div class="vital-card bp">
+                  <span class="vital-label"><i data-lucide="heart" style="color: var(--color-brand); width: 14px;"></i> BP</span>
+                  <span class="vital-value" id="doc-vital-bp">-</span>
+                </div>
+                <div class="vital-card pulse">
+                  <span class="vital-label"><i data-lucide="heart-pulse" style="color: var(--color-success); width: 14px;"></i> Pulse</span>
+                  <span class="vital-value" id="doc-vital-pulse">-</span>
+                </div>
+              </div>
+
+              <!-- Complaints input -->
+              <div class="form-group full-width">
+                <label for="doc-symptoms" style="font-weight:600; color:#fff; display:block; margin-bottom:0.5rem;">Patient Complaints / Current Symptoms <span style="color: var(--color-danger);">*</span></label>
+                <textarea id="doc-symptoms" rows="5" placeholder="Describe active symptoms, duration, intensity..." style="width:100%; padding:0.75rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-md); color:#fff; resize:vertical; font-family:inherit;"></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-primary btn-next-tab" data-next="doc-history">Save & Continue to Past History <i data-lucide="arrow-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Doctor View 3: Past History -->
+      <section id="view-doc-history" class="view-panel">
+        <div class="active-patient-banner card" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);"></div>
+
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+          <div class="workspace-area">
+            <div class="card" style="padding: 1.5rem;">
+              <div class="form-group full-width" style="margin-bottom: 1.5rem;">
+                <label for="doc-prev-history" style="font-weight:600; color:#fff; display:block; margin-bottom:0.5rem;">Patient's Past Medical History</label>
+                <textarea id="doc-prev-history" rows="4" placeholder="Describe past illnesses, chronic conditions, surgeries, allergies, etc. Write 'None' if none..." style="width:100%; padding:0.75rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-md); color:#fff; resize:vertical; font-family:inherit;"></textarea>
+              </div>
+              <div class="form-group full-width">
+                <label for="doc-family-history" style="font-weight:600; color:#fff; display:block; margin-bottom:0.5rem;">Family Medical History</label>
+                <textarea id="doc-family-history" rows="4" placeholder="Describe family history of chronic conditions like heart disease, asthma, diabetes, hypertension..." style="width:100%; padding:0.75rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-md); color:#fff; resize:vertical; font-family:inherit;"></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary btn-next-tab" data-next="doc-complaints"><i data-lucide="arrow-left"></i> Back</button>
+                <button type="button" class="btn btn-primary btn-next-tab" data-next="doc-diagnosis">Save & Continue to Diagnosis <i data-lucide="arrow-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Doctor View 4: Diagnosis -->
+      <section id="view-doc-diagnosis" class="view-panel">
+        <div class="active-patient-banner card" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);"></div>
+
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+          <div class="workspace-area">
+            <div class="card" style="padding: 1.5rem;">
+              <div class="form-group full-width" style="margin-bottom: 1.5rem;">
+                <label for="doc-exam" style="font-weight:600; color:#fff; display:block; margin-bottom:0.5rem;">Physical / Chest Examination</label>
+                <textarea id="doc-exam" rows="4" placeholder="Describe breath sounds, chest sounds, physical exam observations..." style="width:100%; padding:0.75rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-md); color:#fff; resize:vertical; font-family:inherit;"></textarea>
+              </div>
+              <div class="form-group full-width">
+                <label for="doc-diagnosis" style="font-weight:600; color:#fff; display:block; margin-bottom:0.5rem;">Diagnosis Notes <span style="color: var(--color-danger);">*</span></label>
+                <textarea id="doc-diagnosis" rows="4" placeholder="Write clinical diagnosis, observations, and primary findings..." style="width:100%; padding:0.75rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-md); color:#fff; resize:vertical; font-family:inherit;"></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary btn-next-tab" data-next="doc-history"><i data-lucide="arrow-left"></i> Back</button>
+                <button type="button" class="btn btn-primary btn-next-tab" data-next="doc-meds">Save & Continue to Medications <i data-lucide="arrow-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Doctor View 5: Medication & Remedy -->
+      <section id="view-doc-meds" class="view-panel">
+        <div class="active-patient-banner card" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);"></div>
+
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+          <div class="workspace-area">
+            <div class="card" style="padding: 1.5rem;">
+              <h3 style="font-size: 1rem; color: #fff; font-weight:600; margin-bottom: 1rem; display:flex; justify-content:space-between; align-items:center;">
+                <span><i data-lucide="pill" style="color: var(--color-cyan); width: 16px;"></i> Prescribe Medicines</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-add-med"><i data-lucide="plus"></i> Add Med</button>
+              </h3>
+
+              <!-- Medicine inputs row -->
+              <div id="med-input-row" style="display: flex; gap: 0.5rem; background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); margin-bottom: 1rem;">
+                <input type="text" id="med-name-input" placeholder="Medicine Name (e.g. Paracetamol)" style="flex: 2; padding: 0.5rem; font-size: 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:#fff;">
+                <input type="text" id="med-dose-input" placeholder="Dosage (e.g. 500mg)" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:#fff;">
+                <input type="text" id="med-freq-input" placeholder="Frequency (e.g. 1-0-1)" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:#fff;">
+                <input type="text" id="med-dur-input" placeholder="Duration (e.g. 5 Days)" style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:#fff;">
+              </div>
+
+              <div class="meds-list" id="doctor-meds-list" style="margin-bottom: 1.5rem;">
+                <!-- List of current prescription items -->
+                <p class="no-data" style="padding: 1.5rem; font-size: 0.85rem;">No medicines added to prescription yet.</p>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary btn-next-tab" data-next="doc-diagnosis"><i data-lucide="arrow-left"></i> Back</button>
+                <button type="button" class="btn btn-primary btn-next-tab" data-next="doc-tests">Save & Continue to Tests <i data-lucide="arrow-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Doctor View 6: Tests & Investigations -->
+      <section id="view-doc-tests" class="view-panel">
+        <div class="active-patient-banner card" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25);"></div>
+
+        <div class="dashboard-grid" style="grid-template-columns: 1fr;">
+          <div class="workspace-area">
+            <div class="card" style="padding: 1.5rem;">
+              <h3 style="font-size: 1rem; color: #fff; font-weight:600; margin-bottom: 1rem; display:flex; align-items:center; gap:0.5rem;">
+                <i data-lucide="activity" style="color: var(--color-danger); width: 18px; height:18px;"></i> Suggest Scans & Diagnostic Tests
+              </h3>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.5rem;">Select any radiology scans or blood investigations. Ordered scans will be dispatched to the radiology queue immediately upon submission.</p>
+
+              <div class="reports-checklist" style="display:flex; flex-direction:column; gap:0.75rem; background:rgba(255,255,255,0.02); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--glass-border); margin-bottom:2rem;">
+                <label class="checkbox-container">
+                  <input type="checkbox" name="lab-report" value="Chest X-Ray">
+                  <span class="checkmark"></span>
+                  Chest X-Ray
+                </label>
+                <label class="checkbox-container">
+                  <input type="checkbox" name="lab-report" value="Ultrasound Abdomen">
+                  <span class="checkmark"></span>
+                  Ultrasound Abdomen (USG)
+                </label>
+                <label class="checkbox-container">
+                  <input type="checkbox" name="lab-report" value="CT Scan Brain">
+                  <span class="checkmark"></span>
+                  CT Scan Brain
+                </label>
+                <label class="checkbox-container">
+                  <input type="checkbox" name="lab-report" value="MRI Spine">
+                  <span class="checkmark"></span>
+                  MRI Lumbar Spine
+                </label>
+                <label class="checkbox-container">
+                  <input type="checkbox" name="lab-report" value="CBC & Blood Profile">
+                  <span class="checkmark"></span>
+                  CBC & Metabolic Panel
+                </label>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items:center;">
+                <button type="button" class="btn btn-secondary btn-next-tab" data-next="doc-meds"><i data-lucide="arrow-left"></i> Back</button>
+                <button type="button" class="btn btn-success" id="btn-submit-consultation"><i data-lucide="check-circle-2"></i> Submit & Dispatch Visit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 3: Pharmacy Console (Phase 3) -->
+      <section id="view-pharmacy" class="view-panel">
+        <!-- Pharmacy Tabs Nav -->
+        <div class="pharmacy-tabs" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; background: rgba(255, 255, 255, 0.02); padding: 0.5rem; border-radius: var(--radius-md); border: 1px solid var(--glass-border); width: fit-content;">
+          <button type="button" class="btn btn-primary pharmacy-tab active" data-tab="active-queue" style="padding: 0.5rem 1.25rem; font-size: 0.9rem;">
+            <i data-lucide="users" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i> Active Orders
+          </button>
+          <button type="button" class="btn btn-secondary pharmacy-tab" data-tab="refill-desk" style="padding: 0.5rem 1.25rem; font-size: 0.9rem;">
+            <i data-lucide="refresh-cw" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i> Refill & Re-issue
+          </button>
+          <button type="button" class="btn btn-secondary pharmacy-tab" data-tab="custom-rx" style="padding: 0.5rem 1.25rem; font-size: 0.9rem;" id="tab-custom-prescription">
+            <i data-lucide="file-text" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i> Custom Prescription
+          </button>
+        </div>
+
+        <!-- 1. Active Orders Pane -->
+        <div id="ph-active-pane" class="pharmacy-tab-pane">
+          <div class="dashboard-grid">
+            <!-- Main Work Area -->
+            <div class="workspace-area">
+              <div id="pharmacy-dispense-card" class="card" style="display: none;">
+                <div class="overlay-header">
+                  <div>
+                    <h2 id="ph-patient-name" style="font-family: var(--font-display); font-size: 1.5rem; color:#fff;">John Doe</h2>
+                    <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem;">
+                      <span id="ph-patient-id" class="patient-id">PAT-1001</span>
+                      <span id="ph-patient-meta" style="color: var(--text-secondary); font-size: 0.85rem;">Dr. consultation finished</span>
+                    </div>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="btn-close-pharmacy"><i data-lucide="x"></i> Deselect</button>
+                </div>
+
+                <!-- Prescription List -->
+                <h3 style="font-size: 1rem; color: #fff; font-weight:600; margin-bottom: 1rem;">
+                  <i data-lucide="pill" style="width: 16px; vertical-align: middle; color: var(--color-cyan);"></i> Prescribed Medicines
+                </h3>
+                
+                <div class="patient-list" id="pharmacy-meds-checklist" style="margin-bottom: 2rem;">
+                  <!-- Filled dynamically with medicine checkboxes -->
+                </div>
+
+                <!-- Billing Status Indicator -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; padding: 0.75rem 1rem; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--glass-border); border-radius: var(--radius-sm);">
+                  <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #fff;">
+                    <i data-lucide="receipt" style="width: 16px; height: 16px; color: var(--color-cyan);"></i>
+                    <span>Billing Status:</span>
+                    <span id="ph-billing-status" class="badge badge-waiting">Unpaid</span>
+                  </div>
+                  <div style="font-size: 0.85rem; color: var(--text-secondary);" id="ph-billing-notes">
+                    Meds must be paid at reception desk before dispensing.
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                  <button id="btn-print-prescription" class="btn btn-secondary" type="button"><i data-lucide="printer"></i> Print Prescription</button>
+                  <button id="btn-submit-pricing" class="btn btn-primary" type="button"><i data-lucide="check-square"></i> Submit Pricing</button>
+                  <button id="btn-dispense-submit" class="btn btn-success" disabled><i data-lucide="shopping-bag"></i> Dispense & Complete Pharmacy Phase</button>
+                </div>
+              </div>
+
+              <!-- Pharmacy Queue Prompt when no patient selected -->
+              <div id="pharmacy-placeholder-card" class="no-data" style="padding: 5rem; border-radius: var(--radius-lg);">
+                <i data-lucide="pill" style="width: 48px; height: 48px; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                <p style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary);">Select a patient from the Pharmacy queue on the right to dispense prescription.</p>
+              </div>
+            </div>
+
+            <!-- Queue Panel -->
+            <div class="side-panel">
+              <div class="card" style="height: 100%; margin-bottom: 0;">
+                <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="hourglass"></i> Pharmacy Orders</h2>
+                <div id="pharmacy-queue" class="patient-list">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Refill & Re-issue Pane -->
+        <div id="ph-refill-pane" class="pharmacy-tab-pane" style="display: none;">
+          <div class="dashboard-grid">
+            <div class="workspace-area">
+              <!-- Selected Patient Refill Details -->
+              <div id="pharmacy-refill-card" class="card" style="display: none;">
+                <div class="overlay-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.75rem; margin-bottom: 1.5rem;">
+                  <div>
+                    <h2 id="ph-refill-patient-name" style="font-family: var(--font-display); font-size: 1.5rem; color:#fff; margin: 0;">John Doe</h2>
+                    <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem;">
+                      <span id="ph-refill-patient-id" class="patient-id">PAT-1001</span>
+                      <span id="ph-refill-patient-meta" style="color: var(--text-secondary); font-size: 0.85rem;">Male, 32 Years</span>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-close-ph-refill"><i data-lucide="x"></i> Deselect</button>
+                </div>
+
+                <div style="margin-bottom: 1.5rem; background: rgba(255,255,255,0.02); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                  <div>
+                    <label for="ph-refill-visit-selector" style="font-weight: 600; color: #fff; margin-bottom: 0.25rem; display: block;">Select Previous Visit Record:</label>
+                    <select id="ph-refill-visit-selector" style="background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 0.4rem; font-size: 0.85rem; width: 280px;"></select>
+                  </div>
+                  <div>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; text-align: right;">Visit Date</span>
+                    <strong id="ph-refill-visit-date" style="color: var(--color-cyan);">-</strong>
+                  </div>
+                </div>
+
+                <!-- Past Diagnosis and Medicines Preview -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                  <div class="card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--glass-border); padding: 1.25rem; margin-bottom: 0;">
+                    <h3 style="font-size: 0.95rem; color: #fff; font-weight:600; margin-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">
+                      <i data-lucide="activity" style="color: var(--color-danger); width: 14px; margin-right: 4px; vertical-align: middle;"></i> Past Diagnosis & Vitals
+                    </h3>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.85rem; color: var(--text-secondary);">
+                      <div><strong>Diagnosis:</strong> <span id="ph-refill-diagnosis" style="color: #fff; font-weight: 500;">-</span></div>
+                      <div><strong>Vitals:</strong> <span id="ph-refill-vitals" style="color: #fff; font-weight: 500;">-</span></div>
+                      <div><strong>Symptoms:</strong> <span id="ph-refill-symptoms" style="color: #fff; font-weight: 500;">-</span></div>
+                    </div>
+                  </div>
+
+                  <div class="card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--glass-border); padding: 1.25rem; margin-bottom: 0;">
+                    <h3 style="font-size: 0.95rem; color: #fff; font-weight:600; margin-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">
+                      <i data-lucide="pill" style="color: var(--color-cyan); width: 14px; margin-right: 4px; vertical-align: middle;"></i> Prescribed Medicines
+                    </h3>
+                    <div id="ph-refill-meds-preview" style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                      <!-- Meds list -->
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                  <button id="btn-print-refill-rx" class="btn btn-secondary" type="button"><i data-lucide="printer"></i> Print Prescription</button>
+                  <button id="btn-reissue-submit" class="btn btn-primary" type="button"><i data-lucide="refresh-cw"></i> Re-issue & Add to Queue</button>
+                </div>
+              </div>
+
+              <!-- Refill Placeholder -->
+              <div id="pharmacy-refill-placeholder" class="no-data" style="padding: 5rem; border-radius: var(--radius-lg);">
+                <i data-lucide="refresh-cw" style="width: 48px; height: 48px; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                <p style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary);">Select a patient from the search registry on the right to load history and perform refills.</p>
+              </div>
+            </div>
+
+            <!-- Registry Search Panel -->
+            <div class="side-panel">
+              <div class="card" style="height: 100%; margin-bottom: 0; padding: 1.25rem;">
+                <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="search"></i> Patient Registry</h2>
+                <input type="text" id="pharmacy-refill-search" placeholder="Search name/ID/phone..." style="padding: 0.5rem; font-size: 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:#fff; margin-bottom: 1rem; width: 100%;">
+                <div id="pharmacy-refill-results" class="patient-list" style="max-height: 450px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                  <!-- Registry search results -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Custom Prescription Pane -->
+        <div id="ph-custom-pane" class="pharmacy-tab-pane" style="display: none;">
+          <div class="dashboard-grid">
+            <div class="workspace-area">
+              <div class="card" id="pharmacy-custom-prescription-card">
+                <h2 class="card-title" style="border-bottom: 1px solid var(--glass-border); padding-bottom: 0.75rem; margin-bottom: 1.5rem; margin-top: 0;">
+                  <i data-lucide="file-text" style="color: var(--color-cyan);"></i> Custom Prescription Writer
+                </h2>
+
+                <form id="pharmacy-custom-rx-form">
+                  <!-- Patient Demographics -->
+                  <div class="form-grid" style="grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="form-group" style="grid-column: span 2;">
+                      <label for="custom-rx-name">Patient Name</label>
+                      <input type="text" id="custom-rx-name" placeholder="John Doe" required style="padding: 0.5rem; font-size: 0.85rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="custom-rx-age">Age</label>
+                      <input type="number" id="custom-rx-age" placeholder="30" required min="0" style="padding: 0.5rem; font-size: 0.85rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="custom-rx-gender">Gender</label>
+                      <select id="custom-rx-gender" required style="padding: 0.5rem; font-size: 0.85rem;">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Patient Vitals & Diagnosis -->
+                  <div class="vitals-grid" style="grid-template-columns: repeat(4, 1fr); padding: 0.75rem; gap: 0.75rem; margin-bottom: 1.5rem;">
+                    <div class="form-group">
+                      <label for="custom-rx-bp">BP (Sys/Dia)</label>
+                      <input type="text" id="custom-rx-bp" placeholder="120/80" style="padding: 0.4rem; font-size: 0.8rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="custom-rx-pulse">Pulse (bpm)</label>
+                      <input type="number" id="custom-rx-pulse" placeholder="72" style="padding: 0.4rem; font-size: 0.8rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="custom-rx-temp">Temp (°F)</label>
+                      <input type="number" step="0.1" id="custom-rx-temp" placeholder="98.6" style="padding: 0.4rem; font-size: 0.8rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="custom-rx-weight">Weight (kg)</label>
+                      <input type="number" step="0.1" id="custom-rx-weight" placeholder="70" style="padding: 0.4rem; font-size: 0.8rem;">
+                    </div>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label for="custom-rx-diagnosis">Diagnosis / Findings</label>
+                    <input type="text" id="custom-rx-diagnosis" placeholder="e.g. Cough and Cold / Bronchial Asthma" required style="padding: 0.5rem; font-size: 0.85rem;">
+                  </div>
+
+                  <!-- Added Medicines List -->
+                  <h3 style="font-size: 0.95rem; color: #fff; font-weight:600; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                    <span><i data-lucide="pill" style="color: var(--color-cyan); width: 14px; vertical-align: middle;"></i> Prescription Medicines</span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Click directory items to add</span>
+                  </h3>
+                  <div class="meds-list" id="custom-rx-meds-list" style="margin-bottom: 1.5rem; min-height: 100px;">
+                    <p class="no-data" style="padding: 1rem; font-size: 0.8rem;">Click medicines from the directory on the right to add them here.</p>
+                  </div>
+
+                  <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                    <button type="button" class="btn btn-secondary" id="btn-custom-rx-reset">Reset Form</button>
+                    <button type="submit" class="btn btn-primary"><i data-lucide="printer"></i> Print Custom Prescription</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Medicines Directory Panel -->
+            <div class="side-panel">
+              <div class="card" style="height: 100%; margin-bottom: 0; padding: 1.25rem;">
+                <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="package"></i> Meds Directory</h2>
+                <input type="text" id="pharmacy-med-search" placeholder="Search medicines..." style="padding: 0.5rem; font-size: 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:#fff; margin-bottom: 1rem; width: 100%;">
+                <div id="pharmacy-med-directory-list" class="patient-list" style="max-height: 450px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                  <!-- Medicines loaded here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 4: Radiology Lab Console (Phase 3) -->
+      <section id="view-radiology" class="view-panel">
+        <div class="dashboard-grid">
+          <!-- Main Work Area -->
+          <div class="workspace-area">
+            <div id="radiology-report-card" class="card" style="display: none;">
+              <div class="overlay-header">
+                <div>
+                  <h2 id="rad-patient-name" style="font-family: var(--font-display); font-size: 1.5rem; color:#fff;">John Doe</h2>
+                  <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem;">
+                    <span id="rad-patient-id" class="patient-id">PAT-1001</span>
+                    <span id="rad-patient-meta" style="color: var(--text-secondary); font-size: 0.85rem;">Dr. reports ordered</span>
+                  </div>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-close-radiology"><i data-lucide="x"></i> Deselect</button>
+              </div>
+
+              <!-- Reports Form -->
+              <h3 style="font-size: 1rem; color: #fff; font-weight:600; margin-bottom: 1rem;">
+                <i data-lucide="file-text" style="width: 16px; vertical-align: middle; color: var(--color-danger);"></i> Ordered Reports & Findings
+              </h3>
+              
+              <form id="radiology-reports-form">
+                <div id="radiology-inputs-container" style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 2rem;">
+                  <!-- Filled dynamically with ordered reports and textarea input for findings -->
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                  <button type="submit" class="btn btn-danger"><i data-lucide="check-square"></i> Finalize Findings & Complete Scan Phase</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Radiology Queue Prompt when no patient selected -->
+            <div id="radiology-placeholder-card" class="no-data" style="padding: 5rem; border-radius: var(--radius-lg);">
+              <i data-lucide="activity" style="width: 48px; height: 48px; color: var(--text-muted); margin-bottom: 1rem;"></i>
+              <p style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary);">Select a patient from the Radiology queue on the right to input scan findings.</p>
+            </div>
+          </div>
+
+          <!-- Queue Panel -->
+          <div class="side-panel">
+            <div class="card" style="height: 100%; margin-bottom: 0;">
+              <h2 class="card-title" style="margin-bottom: 1rem;"><i data-lucide="hourglass"></i> Radiology Scans</h2>
+              <div id="radiology-queue" class="patient-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 5: Central Patient Registry -->
+      <section id="view-registry" class="view-panel">
+        <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+          <div class="search-bar" style="margin-bottom: 0;">
+            <div class="search-input-wrapper">
+              <i data-lucide="search"></i>
+              <input type="text" id="registry-search-input" placeholder="Search the entire HMS Database by Patient ID, Name, or Phone...">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title"><i data-lucide="database"></i> System Patient Database</h2>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--glass-border); color: var(--text-secondary);">
+                  <th style="padding: 1rem;">Patient ID</th>
+                  <th style="padding: 1rem;">Name</th>
+                  <th style="padding: 1rem;">Age/Gender</th>
+                  <th style="padding: 1rem;">Phone</th>
+                  <th style="padding: 1rem;">Latest Vitals</th>
+                  <th style="padding: 1rem;">Status</th>
+                  <th style="padding: 1rem; text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="registry-table-body">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- History/Encounter Detail Slideout/Overlay panel -->
+        <div id="registry-detail-card" class="overlay-panel">
+          <div class="overlay-header">
+            <div>
+              <h2 id="reg-patient-name" style="font-family: var(--font-display); font-size: 1.5rem; color:#fff;">John Doe</h2>
+              <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem; align-items: center; flex-wrap: wrap;">
+                <span id="reg-patient-id" class="patient-id">PAT-1001</span>
+                <span id="reg-patient-meta" style="color: var(--text-secondary); font-size: 0.85rem;">Male, 32 | Blood: AB+</span>
+                <div style="display: flex; align-items: center; gap: 0.4rem; margin-left: 1rem; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--glass-border);">
+                  <label for="reg-visit-selector" style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0; font-weight: 600;">Select Visit Record:</label>
+                  <select id="reg-visit-selector" style="background: transparent; border: none; color: #fff; font-size: 0.75rem; font-weight: 600; cursor: pointer; outline: none; padding: 0;">
+                    <!-- Visit options loaded here -->
+                  </select>
+                </div>
+              </div>
+              <div id="reg-visit-dates-display" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem; font-weight: 500;">
+                Check-in Date: <span id="reg-checkin-date">-</span> | Consultation Date: <span id="reg-exam-date">-</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+              <button class="btn btn-primary btn-sm" id="btn-print-registry-prescription" type="button"><i data-lucide="printer"></i> Print Visit Details</button>
+              <button class="btn btn-secondary btn-sm" id="btn-close-registry-detail"><i data-lucide="x"></i> Close Record</button>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+            <!-- Left Side: Basic & Vitals -->
+            <div>
+              <h3 style="font-size: 1rem; margin-bottom: 1rem; color: #fff; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.5rem;">
+                <i data-lucide="heart-pulse" style="width: 16px; vertical-align: middle; color: var(--color-cyan);"></i> Intake & Vitals Details
+              </h3>
+              <div class="vitals-container" style="grid-template-columns: repeat(2, 1fr);">
+                <div class="vital-card temp">
+                  <span class="vital-label">Temperature</span>
+                  <span class="vital-value" id="reg-vital-temp">-</span>
+                </div>
+                <div class="vital-card weight">
+                  <span class="vital-label">Weight</span>
+                  <span class="vital-value" id="reg-vital-weight">-</span>
+                </div>
+                <div class="vital-card bp">
+                  <span class="vital-label">Blood Pressure</span>
+                  <span class="vital-value" id="reg-vital-bp">-</span>
+                </div>
+                <div class="vital-card pulse">
+                  <span class="vital-label">Pulse</span>
+                  <span class="vital-value" id="reg-vital-pulse">-</span>
+                </div>
+              </div>
+              <p style="color: var(--text-secondary); font-size: 0.85rem;">Registered Contact: <strong id="reg-phone">-</strong></p>
+            </div>
+
+            <!-- Right Side: Clinical details -->
+            <div>
+              <h3 style="font-size: 1rem; margin-bottom: 1rem; color: #fff; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.5rem;">
+                <i data-lucide="stethoscope" style="width: 16px; vertical-align: middle; color: var(--color-brand);"></i> Diagnosis & Clinical Consultation
+              </h3>
+              <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                  <strong style="font-size: 0.85rem; color: var(--text-secondary); display:block; margin-bottom: 0.25rem;">Current Symptoms</strong>
+                  <p id="reg-symptoms" style="background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.9rem;">-</p>
+                </div>
+                <div>
+                  <strong style="font-size: 0.85rem; color: var(--text-secondary); display:block; margin-bottom: 0.25rem;">Previous Medical History</strong>
+                  <p id="reg-prev-history" style="background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.9rem;">-</p>
+                </div>
+                <div>
+                  <strong style="font-size: 0.85rem; color: var(--text-secondary); display:block; margin-bottom: 0.25rem;">Family Medical History</strong>
+                  <p id="reg-family-history" style="background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.9rem;">-</p>
+                </div>
+                <div>
+                  <strong style="font-size: 0.85rem; color: var(--text-secondary); display:block; margin-bottom: 0.25rem;">Physical / Chest Examination</strong>
+                  <p id="reg-exam" style="background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.9rem;">-</p>
+                </div>
+                <div>
+                  <strong style="font-size: 0.85rem; color: var(--text-secondary); display:block; margin-bottom: 0.25rem;">Diagnosis Notes</strong>
+                  <p id="reg-diagnosis" style="background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.9rem;">-</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom: Prescriptions and Lab Reports -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
+            <div>
+              <h3 style="font-size: 1rem; margin-bottom: 1rem; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="pill" style="color: var(--color-cyan); width:18px;"></i> Prescriptions & Dispense Status
+              </h3>
+              <div class="meds-list" id="reg-meds-list">
+                <!-- List -->
+              </div>
+            </div>
+
+            <div>
+              <h3 style="font-size: 1rem; margin-bottom: 1rem; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="activity" style="color: var(--color-danger); width:18px;"></i> Ordered Scans & Lab Results
+              </h3>
+              <div class="meds-list" id="reg-reports-list" style="border-color: rgba(239, 68, 68, 0.1);">
+                <!-- List -->
+              </div>
+            </div>
+          </div>
+        </div>
+      <!-- View 6: Staff Management Console (Admin/Doctor Only) -->
+      <section id="view-staff-mgmt" class="view-panel">
+        <div class="card">
+          <h2 class="card-title"><i data-lucide="users-round"></i> Staff Directory & Management</h2>
+          <div style="overflow-x: auto; margin-top: 1rem;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--glass-border); color: var(--text-secondary);">
+                  <th style="padding: 1rem;">Full Name</th>
+                  <th style="padding: 1rem;">Username</th>
+                  <th style="padding: 1rem;">Role</th>
+                  <th style="padding: 1rem; text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="staff-table-body">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Hidden Print Container -->
+  <div id="print-prescription-container">
+    <div class="print-prescription-header">
+      <div class="header-left">
+        <div class="lungs-logo">
+          <svg viewBox="0 0 100 100" width="55" height="55">
+            <path d="M50 30 C 40 10, 15 20, 20 50 C 23 65, 38 85, 50 85 C 62 85, 77 65, 80 50 C 85 20, 60 10, 50 30 Z" fill="none" stroke="#2a9d8f" stroke-width="4.5"/>
+            <path d="M50 35 L50 75" stroke="#e63946" stroke-width="4.5"/>
+            <circle cx="50" cy="30" r="4.5" fill="#e63946"/>
+            <path d="M50 50 Q40 55 35 62" fill="none" stroke="#e63946" stroke-width="2.5"/>
+            <path d="M50 55 Q60 60 65 67" fill="none" stroke="#e63946" stroke-width="2.5"/>
+          </svg>
+          <span class="logo-subtext">Breath is Life... We Care</span>
+        </div>
+        <div class="hospital-info">
+          <h1>LIFELINE MEDICARE CENTRE</h1>
+          <p class="hosp-subtitle">Ganga Nagar, Meerut, Uttar Pradesh</p>
+          <p class="hosp-reg">UPMC Reg. No.: 99584 | MRT Reg. No.: 01008</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="doctor-title-hindi">डॉ॰ अदिति चौधरी</div>
+        <div class="doctor-title-english">Dr. Aditi Chaudhary</div>
+        <div class="doctor-degrees">B.A.M.S.</div>
+        <div class="doctor-specialty">Physician & Chest Specialist</div>
+        <div class="doctor-details">Member of Indian Medical Association</div>
+      </div>
+    </div>
+    
+    <div class="patient-details-bar">
+      <div><strong>Patient ID:</strong> <span id="print-p-id"></span></div>
+      <div><strong>Name:</strong> <span id="print-p-name"></span></div>
+      <div><strong>Age/Gender:</strong> <span id="print-p-age-gender"></span></div>
+      <div><strong>Date & Time:</strong> <span id="print-visit-date"></span></div>
+    </div>
+    
+    <div class="prescription-body">
+      <div class="vitals-row">
+        <strong>Vitals:</strong> 
+        BP: <span id="print-vitals-bp">-</span> mmHg | 
+        Pulse: <span id="print-vitals-pulse">-</span> bpm | 
+        Weight: <span id="print-vitals-weight">-</span> kg | 
+        Temp: <span id="print-vitals-temp">-</span> °F
+      </div>
+      
+      <div class="clinical-info-section">
+        <div class="clinical-item">
+          <strong>Complaints:</strong> <span id="print-complaints">-</span>
+        </div>
+        <div class="clinical-item">
+          <strong>Personal History:</strong> <span id="print-history">Non-Smoker, Non-Alcoholic</span>
+        </div>
+        <div class="clinical-item">
+          <strong>Chest Examination:</strong> <span id="print-exam">-</span>
+        </div>
+        <div class="clinical-item">
+          <strong>Diagnosis:</strong> <span id="print-diagnosis">-</span>
+        </div>
+      </div>
+      
+      <div class="rx-header">Rx</div>
+      
+      <table class="meds-print-table">
+        <thead>
+          <tr>
+            <th style="width: 5%;">#</th>
+            <th style="width: 45%;">Medicine Name & Composition</th>
+            <th style="width: 20%; text-align: center;">Dosage (M-A-N)</th>
+            <th style="width: 30%; text-align: right;">Timing / Frequency / Duration</th>
+          </tr>
+        </thead>
+        <tbody id="print-meds-body">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+      
+      <div class="advice-section">
+        <strong>Advice & Investigations:</strong>
+        <div id="print-advice-investigations" style="margin-top: 5px; line-height: 1.4;">
+          <!-- Advice and scans list -->
+        </div>
+      </div>
+      
+      <div class="next-visit-row">
+        <strong>Next Visit:</strong> <span id="print-next-visit">As advised / review after 7 days</span>
+      </div>
+    </div>
+    
+    <div class="print-prescription-footer">
+      <div class="footer-left">
+        <p>📍 <strong>Address:</strong> Ganga Nagar, Meerut, Uttar Pradesh - 250001</p>
+        <p>📞 <strong>Phone:</strong> 096 906 004 63, 730 087 7703</p>
+      </div>
+      <div class="footer-right">
+        <div class="signature-space">
+          <div class="signature-line"></div>
+          <p class="sig-dr-name">Dr. ADITI CHAUDHARY</p>
+          <p class="sig-title">Consulting Physician</p>
+        </div>
+        <div class="sunday-closed">SUNDAY CLOSED</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden Consultation Bill Print Container -->
+  <div id="print-consultation-bill-container">
+    <div class="print-prescription-header">
+      <div class="header-left">
+        <div class="lungs-logo">
+          <svg viewBox="0 0 100 100" width="55" height="55">
+            <path d="M50 30 C 40 10, 15 20, 20 50 C 23 65, 38 85, 50 85 C 62 85, 77 65, 80 50 C 85 20, 60 10, 50 30 Z" fill="none" stroke="#2a9d8f" stroke-width="4.5"/>
+            <path d="M50 35 L50 75" stroke="#e63946" stroke-width="4.5"/>
+            <circle cx="50" cy="30" r="4.5" fill="#e63946"/>
+            <path d="M50 50 Q40 55 35 62" fill="none" stroke="#e63946" stroke-width="2.5"/>
+            <path d="M50 55 Q60 60 65 67" fill="none" stroke="#e63946" stroke-width="2.5"/>
+          </svg>
+          <span class="logo-subtext">Breath is Life... We Care</span>
+        </div>
+        <div class="hospital-info">
+          <h1>LIFELINE MEDICARE CENTRE</h1>
+          <p class="hosp-subtitle">Ganga Nagar, Meerut, Uttar Pradesh</p>
+          <p class="hosp-reg">UPMC Reg. No.: 99584 | MRT Reg. No.: 01008</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="doctor-title-hindi">डॉ॰ अदिति चौधरी</div>
+        <div class="doctor-title-english">Dr. Aditi Chaudhary</div>
+        <div class="doctor-degrees">B.A.M.S.</div>
+        <div class="doctor-specialty">Physician & Chest Specialist</div>
+        <div class="doctor-details">Member of Indian Medical Association</div>
+      </div>
+    </div>
+
+    <div style="text-align: center; border-bottom: 2px double #ccc; padding-bottom: 10px; margin-bottom: 20px;">
+      <h3 style="font-family: 'Inter', sans-serif; font-size: 1.25rem; font-weight: 700; letter-spacing: 1px; color: #2a9d8f; margin: 0;">INVOICE: CONSULTATION BILL</h3>
+    </div>
+
+    <!-- Patient Info Section -->
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px; font-size: 0.88rem; line-height: 1.6; color: #333; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+      <div>
+        <p style="margin: 3px 0;"><strong>Patient Name:</strong> <span id="print-consult-p-name">-</span></p>
+        <p style="margin: 3px 0;"><strong>Patient ID:</strong> <span id="print-consult-p-id">-</span></p>
+        <p style="margin: 3px 0;"><strong>Age / Gender:</strong> <span id="print-consult-p-age-gender">-</span></p>
+      </div>
+      <div style="text-align: right;">
+        <p style="margin: 3px 0;"><strong>Invoice Date:</strong> <span id="print-consult-date">-</span></p>
+        <p style="margin: 3px 0;"><strong>Contact:</strong> <span id="print-consult-phone">-</span></p>
+        <p style="margin: 3px 0;"><strong>Payment Status:</strong> <strong id="print-consult-status" style="color: #2a9d8f;">PAID</strong></p>
+      </div>
+    </div>
+
+    <!-- Bill Items -->
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 40px; font-size: 0.9rem;">
+      <thead>
+        <tr style="border-bottom: 2px solid #2a9d8f; background-color: #f7f7f7;">
+          <th style="padding: 12px 10px; text-align: left; font-weight: 700;">Description</th>
+          <th style="padding: 12px 10px; text-align: right; font-weight: 700; width: 30%;">Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding: 15px 10px; text-align: left; font-weight: 500;">Clinical Consultation & Vitals Registration Fee</td>
+          <td style="padding: 15px 10px; text-align: right; font-weight: 600;" id="print-consult-gross-fee">₹1000.00</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding: 15px 10px; text-align: left; color: #c0392b; font-style: italic;">Discount Applied</td>
+          <td style="padding: 15px 10px; text-align: right; color: #c0392b; font-weight: 600;" id="print-consult-discount">-₹0.00</td>
+        </tr>
+        <tr style="font-weight: 700; border-bottom: 2px solid #2a9d8f; background: #fdfefe;">
+          <td style="padding: 15px 10px; text-align: left; font-size: 1.05rem;">Total Paid Amount</td>
+          <td style="padding: 15px 10px; text-align: right; font-size: 1.05rem; color: #2a9d8f;" id="print-consult-net-fee">₹1000.00</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Footer Signatures -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 80px; font-size: 0.88rem; color: #555;">
+      <div>
+        <p style="margin: 2px 0;">Issued by: Receptionist Billing Desk</p>
+        <p style="margin: 2px 0;">Lifeline Medicare Centre, Meerut</p>
+      </div>
+      <div style="text-align: right;">
+        <div style="border-top: 1px solid #888; width: 200px; margin-bottom: 5px;"></div>
+        <p style="margin: 2px 0; font-weight: 600;">Authorized Cashier Signature</p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 70px; border-top: 1px solid #eee; padding-top: 20px; font-size: 0.78rem; color: #777; font-style: italic;">
+      This is a computer-generated invoice from Lifeline Medicare Centre. Thank you for your trust.
+    </div>
+  </div>
+
+  <!-- Hidden Medicine Bill Print Container -->
+  <div id="print-medicine-bill-container">
+    <div class="print-prescription-header">
+      <div class="header-left">
+        <div class="lungs-logo">
+          <svg viewBox="0 0 100 100" width="55" height="55">
+            <path d="M50 30 C 40 10, 15 20, 20 50 C 23 65, 38 85, 50 85 C 62 85, 77 65, 80 50 C 85 20, 60 10, 50 30 Z" fill="none" stroke="#2a9d8f" stroke-width="4.5"/>
+            <path d="M50 35 L50 75" stroke="#e63946" stroke-width="4.5"/>
+            <circle cx="50" cy="30" r="4.5" fill="#e63946"/>
+            <path d="M50 50 Q40 55 35 62" fill="none" stroke="#e63946" stroke-width="2.5"/>
+            <path d="M50 55 Q60 60 65 67" fill="none" stroke="#e63946" stroke-width="2.5"/>
+          </svg>
+          <span class="logo-subtext">Breath is Life... We Care</span>
+        </div>
+        <div class="hospital-info">
+          <h1>LIFELINE MEDICARE CENTRE</h1>
+          <p class="hosp-subtitle">Ganga Nagar, Meerut, Uttar Pradesh</p>
+          <p class="hosp-reg">UPMC Reg. No.: 99584 | MRT Reg. No.: 01008</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="doctor-title-hindi">डॉ॰ अदिति चौधरी</div>
+        <div class="doctor-title-english">Dr. Aditi Chaudhary</div>
+        <div class="doctor-degrees">B.A.M.S.</div>
+        <div class="doctor-specialty">Physician & Chest Specialist</div>
+        <div class="doctor-details">Member of Indian Medical Association</div>
+      </div>
+    </div>
+
+    <div style="text-align: center; border-bottom: 2px double #ccc; padding-bottom: 10px; margin-bottom: 20px;">
+      <h3 style="font-family: 'Inter', sans-serif; font-size: 1.25rem; font-weight: 700; letter-spacing: 1px; color: #2a9d8f; margin: 0;">INVOICE: MEDICINE DISPENSARY BILL</h3>
+    </div>
+
+    <!-- Patient Info Section -->
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px; font-size: 0.88rem; line-height: 1.6; color: #333; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+      <div>
+        <p style="margin: 3px 0;"><strong>Patient Name:</strong> <span id="print-meds-p-name">-</span></p>
+        <p style="margin: 3px 0;"><strong>Patient ID:</strong> <span id="print-meds-p-id">-</span></p>
+        <p style="margin: 3px 0;"><strong>Age / Gender:</strong> <span id="print-meds-p-age-gender">-</span></p>
+      </div>
+      <div style="text-align: right;">
+        <p style="margin: 3px 0;"><strong>Invoice Date:</strong> <span id="print-meds-date">-</span></p>
+        <p style="margin: 3px 0;"><strong>Contact:</strong> <span id="print-meds-phone">-</span></p>
+        <p style="margin: 3px 0;"><strong>Payment Status:</strong> <strong id="print-meds-status" style="color: #2a9d8f;">PAID</strong></p>
+      </div>
+    </div>
+
+    <!-- Bill Items -->
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 40px; font-size: 0.9rem;">
+      <thead>
+        <tr style="border-bottom: 2px solid #2a9d8f; background-color: #f7f7f7;">
+          <th style="padding: 12px 10px; text-align: left; font-weight: 700; width: 8%;">S.No</th>
+          <th style="padding: 12px 10px; text-align: left; font-weight: 700; width: 50%;">Medicine Item</th>
+          <th style="padding: 12px 10px; text-align: center; font-weight: 700; width: 22%;">Dosage / Duration</th>
+          <th style="padding: 12px 10px; text-align: right; font-weight: 700; width: 20%;">Price (₹)</th>
+        </tr>
+      </thead>
+      <tbody id="print-meds-bill-body">
+        <!-- Populated dynamically -->
+      </tbody>
+    </table>
+
+    <!-- Footer Signatures -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 80px; font-size: 0.88rem; color: #555;">
+      <div>
+        <p style="margin: 2px 0;">Dispensed by: Pharmacy Department</p>
+        <p style="margin: 2px 0;">Paid at: Receptionist Billing Desk</p>
+      </div>
+      <div style="text-align: right;">
+        <div style="border-top: 1px solid #888; width: 200px; margin-bottom: 5px;"></div>
+        <p style="margin: 2px 0; font-weight: 600;">Authorized Cashier Signature</p>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 70px; border-top: 1px solid #eee; padding-top: 20px; font-size: 0.78rem; color: #777; font-style: italic;">
+      This is a computer-generated invoice from Lifeline Medicare Centre. Thank you for your trust.
+    </div>
+  </div>
+
+  <!-- Clinical Visit History Modal -->
+  <div id="past-visits-modal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center; z-index: 10000; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px);">
+    <div class="card" style="width: 100%; max-width: 650px; padding: 2rem; max-height: 85vh; display: flex; flex-direction: column; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--glass-border); box-shadow: var(--shadow-xl); border-radius: var(--radius-lg);">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 1rem; margin-bottom: 1.25rem;">
+        <h3 style="font-family: var(--font-display); font-size: 1.3rem; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+          <i data-lucide="history" style="color: var(--color-cyan);"></i> Clinical Visit History
+        </h3>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-close-past-modal" style="padding: 0.35rem 0.5rem; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);"><i data-lucide="x"></i></button>
+      </div>
+      <div id="past-visits-modal-content" style="flex-grow: 1; overflow-y: auto; padding-right: 0.5rem; display: flex; flex-direction: column; gap: 1rem;">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- App JS -->
+  <script src="app.js"></script>
+</body>
+</html>
