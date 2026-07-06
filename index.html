@@ -814,8 +814,38 @@
                   <i data-lucide="pill" style="width: 16px; vertical-align: middle; color: var(--color-cyan);"></i> Prescribed Medicines
                 </h3>
                 
-                <div class="patient-list" id="pharmacy-meds-checklist" style="margin-bottom: 2rem;">
+                <div class="patient-list" id="pharmacy-meds-checklist" style="margin-bottom: 1.5rem;">
                   <!-- Filled dynamically with medicine checkboxes -->
+                </div>
+
+                <!-- Add Custom Medicine Form (Pharmacist) -->
+                <div id="ph-add-med-form" style="margin-bottom: 2rem; padding: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(6, 182, 212, 0.3); border-radius: var(--radius-sm);">
+                  <h4 style="font-size: 0.9rem; color: #fff; margin-top: 0; margin-bottom: 1rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="plus-circle" style="width: 16px; height: 16px; color: var(--color-cyan);"></i> Add Extra Medicine to Order
+                  </h4>
+                  <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 0.75rem; align-items: end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.75rem; margin-bottom: 0.25rem; display: block; color: var(--text-secondary);">Medicine Name</label>
+                      <input type="text" id="ph-add-med-name" placeholder="e.g. Paracetamol" style="padding: 0.4rem; font-size: 0.85rem; width: 100%; background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.75rem; margin-bottom: 0.25rem; display: block; color: var(--text-secondary);">Dose</label>
+                      <input type="text" id="ph-add-med-dose" placeholder="e.g. 500mg" style="padding: 0.4rem; font-size: 0.85rem; width: 100%; background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.75rem; margin-bottom: 0.25rem; display: block; color: var(--text-secondary);">Frequency</label>
+                      <input type="text" id="ph-add-med-freq" placeholder="e.g. 1-0-1" style="padding: 0.4rem; font-size: 0.85rem; width: 100%; background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.75rem; margin-bottom: 0.25rem; display: block; color: var(--text-secondary);">Duration</label>
+                      <input type="text" id="ph-add-med-dur" placeholder="e.g. 5 Days" style="padding: 0.4rem; font-size: 0.85rem; width: 100%; background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.75rem; margin-bottom: 0.25rem; display: block; color: var(--text-secondary);">Price (₹)</label>
+                      <input type="number" id="ph-add-med-price" placeholder="0.00" min="0" style="padding: 0.4rem; font-size: 0.85rem; width: 100%; background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; text-align: right;">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="btn-ph-add-med" style="padding: 0.45rem 1rem; font-size: 0.85rem; height: 32px; display: flex; align-items: center; justify-content: center;">Add</button>
+                  </div>
                 </div>
 
                 <!-- Billing Status Indicator -->

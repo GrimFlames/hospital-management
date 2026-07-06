@@ -833,6 +833,76 @@ function setupEventListeners() {
     }
   });
 
+  // Pharmacist Add Medicine Button
+  const btnPhAddMed = document.getElementById("btn-ph-add-med");
+  if (btnPhAddMed) {
+    btnPhAddMed.addEventListener("click", async () => {
+      if (!activePharmacyPatient) return;
+      const p = patients.find(pat => pat.id === activePharmacyPatient.id);
+      const cv = getCurrentVisit(p);
+      
+      const medNameInput = document.getElementById("ph-add-med-name");
+      const medDoseInput = document.getElementById("ph-add-med-dose");
+      const medFreqInput = document.getElementById("ph-add-med-freq");
+      const medDurInput = document.getElementById("ph-add-med-dur");
+      const medPriceInput = document.getElementById("ph-add-med-price");
+      
+      const medName = medNameInput.value.trim();
+      const medPriceStr = medPriceInput.value.trim();
+      
+      if (!medName) {
+        alert("Please enter a medicine name.");
+        medNameInput.focus();
+        return;
+      }
+      if (!medPriceStr) {
+        alert("Please enter a medicine price.");
+        medPriceInput.focus();
+        return;
+      }
+      
+      const medPrice = parseFloat(medPriceStr) || 0;
+      
+      // Save currently entered prices first so they aren't lost
+      const priceInputs = document.querySelectorAll(".pharmacy-med-price");
+      priceInputs.forEach((input, index) => {
+        const val = parseFloat(input.value) || 0;
+        if (cv.medicines[index]) {
+          cv.medicines[index].price = val;
+        }
+      });
+      
+      // Add the new medicine
+      cv.medicines.push({
+        name: medName,
+        dose: medDoseInput.value.trim() || "N/A",
+        freq: medFreqInput.value.trim() || "1-0-1",
+        dur: medDurInput.value.trim() || "5 Days",
+        price: medPrice,
+        dispensed: false
+      });
+      
+      // Re-calculate the bill amount locally
+      let totalMedsPrice = 0;
+      cv.medicines.forEach(m => {
+        totalMedsPrice += parseFloat(m.price) || 0;
+      });
+      cv.medicinesBillAmount = totalMedsPrice;
+      
+      await updatePatientRecord(p);
+      
+      // Clear inputs
+      medNameInput.value = "";
+      medDoseInput.value = "";
+      medFreqInput.value = "";
+      medDurInput.value = "";
+      medPriceInput.value = "";
+      
+      // Refresh display card
+      selectPatientForPharmacy(p.id);
+    });
+  }
+
   // Receptionist Tab switching
   document.querySelectorAll(".reception-tab").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -3414,6 +3484,36 @@ function startPollingUpdates() {
           upgradeDatabaseSchema();
           renderAllQueues();
           
+          // Re-render active patient cards if they are set
+          if (activePharmacyPatient) {
+            const updatedPhPat = patients.find(pat => pat.id === activePharmacyPatient.id);
+            if (updatedPhPat) {
+              activePharmacyPatient = updatedPhPat;
+              selectPatientForPharmacy(updatedPhPat.id);
+            }
+          }
+          if (activeBillingPatient) {
+            const updatedBillPat = patients.find(pat => pat.id === activeBillingPatient.id);
+            if (updatedBillPat) {
+              activeBillingPatient = updatedBillPat;
+              selectPatientForBilling(updatedBillPat.id);
+            }
+          }
+          if (activeConsultationPatient) {
+            const updatedConsPat = patients.find(pat => pat.id === activeConsultationPatient.id);
+            if (updatedConsPat) {
+              activeConsultationPatient = updatedConsPat;
+              selectPatientForConsultation(updatedConsPat.id);
+            }
+          }
+          if (activeRadiologyPatient) {
+            const updatedRadPat = patients.find(pat => pat.id === activeRadiologyPatient.id);
+            if (updatedRadPat) {
+              activeRadiologyPatient = updatedRadPat;
+              selectPatientForRadiology(updatedRadPat.id);
+            }
+          }
+
           const activeNav = document.querySelector(".nav-item.active");
           if (activeNav) {
             const currentView = activeNav.getAttribute("data-view");
