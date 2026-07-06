@@ -2064,8 +2064,6 @@ function renderRegistryTable() {
     return;
   }
   
-  const sorted = [...filtered].reverse();
-  
   sorted.forEach(p => {
     const cv = getCurrentVisit(p);
     const tr = document.createElement("tr");
@@ -2083,6 +2081,7 @@ function renderRegistryTable() {
       <td style="padding: 1rem;">${getStatusBadge(p)}</td>
       <td style="padding: 1rem; text-align: right;">
         <button class="btn btn-secondary btn-sm btn-view-history" data-id="${p.id}"><i data-lucide="eye" style="width:12px; height:12px;"></i> View EHR</button>
+        <button class="btn btn-danger btn-sm btn-delete-patient" data-id="${p.id}" style="margin-left: 0.5rem;"><i data-lucide="trash-2" style="width:12px; height:12px;"></i> Delete</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -2092,6 +2091,34 @@ function renderRegistryTable() {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
       openRegistryDetail(id);
+    });
+  });
+
+  document.querySelectorAll(".btn-delete-patient").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      if (confirm(`Are you sure you want to delete patient '${id}'? This action cannot be undone.`)) {
+        try {
+          const deleteRes = await fetch(`/api/patients/${id}`, {
+            method: "DELETE"
+          });
+          const data = await deleteRes.json();
+          if (!deleteRes.ok) {
+            throw new Error(data.error || "Failed to delete patient");
+          }
+          alert(`Patient '${id}' removed successfully.`);
+          
+          // Remove from local patients array
+          patients = patients.filter(pat => pat.id !== id);
+          
+          // Re-render and update UI
+          renderRegistryTable();
+          renderAllQueues();
+          updateDashboardStats();
+        } catch (err) {
+          alert(`Error: ${err.message}`);
+        }
+      }
     });
   });
   
@@ -3220,9 +3247,12 @@ document.addEventListener("DOMContentLoaded", () => {
 // ==========================================
 
 function updateDashboardStats() {
+  const todayPrefix = getFormattedDateTime().split(' ')[0];
+  const registeredCount = patients.filter(p => p.visits && p.visits[0] && p.visits[0].date.startsWith(todayPrefix)).length;
+
   const activeCount = patients.filter(p => {
     const cv = getCurrentVisit(p);
-    return cv && cv.status !== "completed";
+    return cv && cv.status === "WAITING_FOR_DOCTOR";
   }).length;
 
   const dischargedCount = patients.filter(p => {
@@ -3230,47 +3260,25 @@ function updateDashboardStats() {
     return cv && cv.status === "completed";
   }).length;
 
-  let consultRev = 0;
-  let pharmacyRev = 0;
-
-  patients.forEach(p => {
-    if (p.visits) {
-      p.visits.forEach(v => {
-        if (v.consultationPaid) {
-          consultRev += Math.max(0, (v.consultationFee || 1000) - (v.consultationDiscount || 0));
-        }
-        if (v.medicinesBillPaid) {
-          pharmacyRev += (v.medicinesBillAmount || 0);
-        }
-      });
-    }
-  });
-
   // Receptionist stats elements
+  const registeredEl = document.getElementById("stats-registered");
+  if (registeredEl) registeredEl.textContent = registeredCount;
+
   const activePatientsEl = document.getElementById("stats-active-patients");
   if (activePatientsEl) activePatientsEl.textContent = activeCount;
   
   const dischargedEl = document.getElementById("stats-discharged");
   if (dischargedEl) dischargedEl.textContent = dischargedCount;
-  
-  const consultRevEl = document.getElementById("stats-consult-revenue");
-  if (consultRevEl) consultRevEl.textContent = `₹${consultRev.toFixed(2)}`;
-  
-  const pharmacyRevEl = document.getElementById("stats-pharmacy-revenue");
-  if (pharmacyRevEl) pharmacyRevEl.textContent = `₹${pharmacyRev.toFixed(2)}`;
 
   // Doctor stats elements
+  const docRegisteredEl = document.getElementById("doc-stats-registered");
+  if (docRegisteredEl) docRegisteredEl.textContent = registeredCount;
+
   const docActivePatientsEl = document.getElementById("doc-stats-active-patients");
   if (docActivePatientsEl) docActivePatientsEl.textContent = activeCount;
   
   const docDischargedEl = document.getElementById("doc-stats-discharged");
   if (docDischargedEl) docDischargedEl.textContent = dischargedCount;
-  
-  const docConsultRevEl = document.getElementById("doc-stats-consult-revenue");
-  if (docConsultRevEl) docConsultRevEl.textContent = `₹${consultRev.toFixed(2)}`;
-  
-  const docPharmacyRevEl = document.getElementById("doc-stats-pharmacy-revenue");
-  if (docPharmacyRevEl) docPharmacyRevEl.textContent = `₹${pharmacyRev.toFixed(2)}`;
 }
 
 async function renderStaffMgmtTable() {

@@ -290,6 +290,22 @@ app.delete('/api/auth/users/:username', async (req, res) => {
   }
 });
 
+// 10.5. Patient Deletion
+app.delete('/api/patients/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = await db.getPatient(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Patient record not found' });
+    }
+    await db.deletePatient(id);
+    await db.addLog(`Patient record deleted: ${existing.name} (${id})`, "warning");
+    res.json({ message: 'Patient record deleted successfully', id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Start the server
 async function start() {
   try {

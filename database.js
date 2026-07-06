@@ -1,168 +1,9 @@
 const mongoose = require('mongoose');
 
 // Mock Patients Data
-const mockPatients = [
-  {
-    id: "PAT-1001",
-    name: "Aarav Sharma",
-    age: 29,
-    gender: "Male",
-    phone: "9876543210",
-    bloodGroup: "O+",
-    visits: [
-      {
-        date: "28-Jun-2026 10:15",
-        examDate: "28-Jun-2026 10:40",
-        vitals: { temp: 98.4, weight: 75, bp: "120/80", pulse: 70 },
-        symptoms: "Mild seasonal allergies and sneezing.",
-        prevHistory: "None",
-        diagnosis: "Allergic Rhinitis",
-        medicines: [{ name: "Cetirizine", dose: "10mg", freq: "0-0-1", dur: "5 Days", dispensed: true }],
-        reports: [],
-        status: "completed",
-        needsPharmacy: true,
-        needsRadiology: false,
-        pharmacyDispensed: true,
-        radiologyCompleted: false,
-        consultationFee: 1000,
-        consultationDiscount: 0,
-        consultationPaid: true,
-        medicinesBillPaid: true,
-        medicinesBillAmount: 150
-      },
-      {
-        date: "02-Jul-2026 09:30",
-        examDate: "",
-        vitals: { temp: 98.6, weight: 75, bp: "122/82", pulse: 72 },
-        symptoms: "",
-        prevHistory: "Allergic Rhinitis",
-        diagnosis: "",
-        medicines: [],
-        reports: [],
-        status: "WAITING_FOR_DOCTOR",
-        needsPharmacy: false,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false,
-        consultationFee: 1000,
-        consultationDiscount: 0,
-        consultationPaid: false,
-        medicinesBillPaid: false,
-        medicinesBillAmount: 0
-      }
-    ],
-    logs: [
-      "Registered at Reception with mild allergies history.",
-      "First check-in completed. Diagnosed with Allergic Rhinitis.",
-      "New check-in registered for second visit on 02-Jul-2026."
-    ]
-  },
-  {
-    id: "PAT-1002",
-    name: "Priya Patel",
-    age: 44,
-    gender: "Female",
-    phone: "9988776655",
-    bloodGroup: "A-",
-    visits: [
-      {
-        date: "15-May-2026 14:00",
-        examDate: "15-May-2026 14:30",
-        vitals: { temp: 98.6, weight: 63, bp: "120/80", pulse: 72 },
-        symptoms: "Routine health checkup.",
-        prevHistory: "Seasonal asthma.",
-        diagnosis: "Healthy. Advised diet control and moderate exercise.",
-        medicines: [],
-        reports: [],
-        status: "completed",
-        needsPharmacy: false,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false,
-        consultationFee: 1000,
-        consultationDiscount: 0,
-        consultationPaid: true,
-        medicinesBillPaid: false,
-        medicinesBillAmount: 0
-      },
-      {
-        date: "02-Jul-2026 10:45",
-        examDate: "02-Jul-2026 11:15",
-        vitals: { temp: 101.2, weight: 62, bp: "135/85", pulse: 94 },
-        symptoms: "Persistent fever for 3 days, body ache and dry cough.",
-        prevHistory: "Known case of seasonal asthma, no major surgeries.",
-        diagnosis: "Acute Bronchitis and Upper Respiratory Tract Infection (URTI).",
-        medicines: [
-          { name: "Paracetamol", dose: "650mg", freq: "1-1-1", dur: "5 Days", dispensed: false },
-          { name: "Amoxicillin", dose: "500mg", freq: "1-0-1", dur: "7 Days", dispensed: false }
-        ],
-        reports: [
-          { name: "Chest X-Ray", status: "pending", findings: "" },
-          { name: "CBC & Blood Profile", status: "pending", findings: "" }
-        ],
-        status: "pending_pharmacy_radiology",
-        needsPharmacy: true,
-        needsRadiology: true,
-        pharmacyDispensed: false,
-        radiologyCompleted: false,
-        consultationFee: 1000,
-        consultationDiscount: 0,
-        consultationPaid: true,
-        medicinesBillPaid: false,
-        medicinesBillAmount: 250
-      }
-    ],
-    logs: [
-      "Registered first check-up. Advised health monitoring.",
-      "Returning check-in on 02-Jul-2026 with high fever.",
-      "Consultation completed by Doctor. Ordered medication check sheet and Chest X-ray."
-    ]
-  },
-  {
-    id: "PAT-1003",
-    name: "Rajesh Kumar",
-    age: 61,
-    gender: "Male",
-    phone: "9123456789",
-    bloodGroup: "B+",
-    visits: [
-      {
-        date: "02-Jul-2026 11:20",
-        examDate: "02-Jul-2026 11:55",
-        vitals: { temp: 97.9, weight: 88, bp: "145/95", pulse: 82 },
-        symptoms: "Mild chest tightness and chronic high blood pressure history.",
-        prevHistory: "Hypertension diagnosed 5 years ago, family history of CHD.",
-        diagnosis: "Essential Hypertension (Stage 2).",
-        medicines: [
-          { name: "Amlodipine", dose: "5mg", freq: "0-0-1", dur: "30 Days", dispensed: false },
-          { name: "Aspirin", dose: "75mg", freq: "1-0-0", dur: "30 Days", dispensed: false }
-        ],
-        reports: [],
-        status: "pending_pharmacy",
-        needsPharmacy: true,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false,
-        consultationFee: 1000,
-        consultationDiscount: 0,
-        consultationPaid: true,
-        medicinesBillPaid: false,
-        medicinesBillAmount: 480
-      }
-    ],
-    logs: [
-      "First check-in registered. BP noted high (145/95 mmHg).",
-      "Consultation finished by Doctor. Prescribed long-term antihypertensives."
-    ]
-  }
-];
+const mockPatients = [];
 
-const mockLogs = [
-  { text: "System initialized with baseline clinic database.", type: "info", time: "10:00:00" },
-  { text: "Patient Aarav Sharma checked in at Reception.", type: "success", time: "10:05:12" },
-  { text: "Patient Priya Patel checked in with fever (101.2°F).", type: "warning", time: "10:12:45" },
-  { text: "Dr. completed prescription for Priya Patel; sent to Pharmacy & Labs.", type: "info", time: "10:22:30" }
-];
+const mockLogs = [];
 
 const defaultUsers = [
   { username: "doctor", password: "doctor123", name: "Dr. Aditi Chaudhary", role: "doctor" },
@@ -358,11 +199,16 @@ async function resetDatabase() {
   console.log("Database reset and re-seeded in MongoDB.");
 }
 
+async function deletePatient(id) {
+  return await Patient.findOneAndDelete({ id });
+}
+
 module.exports = {
   loadDatabase,
   getPatients,
   getPatient,
   savePatient,
+  deletePatient,
   getLogs,
   addLog,
   getUsers,
