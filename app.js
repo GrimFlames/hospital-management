@@ -1,17 +1,29 @@
-// Lifeline Medicare Centre HMS - Application Logic
+// LifeLine (LHMS) — Hospital Management & Clinical Suite (v2.0)
+// Standard: Antigravity × gstack Enterprise Software Factory
 
-// Global State
+let currentUser = null;
 let patients = [];
-let logs = [];
-let activeConsultationPatient = null;
-let activePharmacyPatient = null;
-let activeRadiologyPatient = null;
-let activeBillingPatient = null;
-let currentPrescriptionMeds = []; // Temp storage for meds currently being added in prescription form
-let matchedPatientForIntake = null; // Stored matched patient for receptionist check-in
-let currentUser = null; // Staff authentication state
+let masterScans = [];
+let masterMedicines = [];
+let masterDoctors = [];
 
-// Helper to get formatted check-in/exam date strings
+let activeDocPatient = null;
+let activePharmaPatient = null;
+let activeRadioPatient = null;
+let currentDocMeds = [];
+let currentDocScans = [];
+
+let selectedPharmaPayMode = "Cash";
+let selectedRadioPayMode = "Cash";
+
+// Initialize Lucide Icons
+function refreshIcons() {
+  if (typeof lucide !== "undefined") {
+    lucide.createIcons();
+  }
+}
+
+// Utility: Format Date Time
 function getFormattedDateTime() {
   const now = new Date();
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -23,374 +35,168 @@ function getFormattedDateTime() {
   return `${day}-${month}-${year} ${hours}:${minutes}`;
 }
 
-// Privacy helper: first 3 characters of phone number, mask the rest with x
-function maskPhone(phone) {
-  if (!phone) return "";
-  const cleaned = phone.replace(/\s+/g, '');
-  if (cleaned.length <= 3) return cleaned;
-  return cleaned.substring(0, 3) + "xxxxxxx";
+// Anime Character Avatar Assets inspired by user reference image
+const femaleAnimeAvatars = [
+  "/assets/avatars/female_doctor_1.png",
+  "/assets/avatars/female_doctor_2.png",
+  "/assets/avatars/female_doctor_3.png",
+  "/assets/avatars/anime_female_head_1.png"
+];
+
+const maleAnimeAvatars = [
+  "/assets/avatars/male_doctor_1.png",
+  "/assets/avatars/male_doctor_2.png",
+  "/assets/avatars/anime_male_head_1.png"
+];
+
+function getClientAnimatedAvatar(name, gender) {
+  const seed = (name || 'Staff').toLowerCase().trim();
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const positiveHash = Math.abs(hash);
+
+  if (gender === 'Female') {
+    return femaleAnimeAvatars[positiveHash % femaleAnimeAvatars.length];
+  } else if (gender === 'Male') {
+    return maleAnimeAvatars[positiveHash % maleAnimeAvatars.length];
+  } else {
+    const all = [...femaleAnimeAvatars, ...maleAnimeAvatars];
+    return all[positiveHash % all.length];
+  }
+}
+
+// Modern Floating Toast Notification System
+function showToast(title, message, type = "info") {
+  const container = document.getElementById("toast-container");
+  if (!container) {
+    alert(`${title}: ${message}`);
+    return;
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast-notification ${type}`;
+
+  const iconName = type === "success" ? "check-circle-2" : type === "error" ? "alert-triangle" : "info";
+
+  toast.innerHTML = `
+    <i data-lucide="${iconName}" class="toast-icon"></i>
+    <div class="toast-content">
+      <div class="toast-title">${title}</div>
+      <div class="toast-message">${message}</div>
+    </div>
+  `;
+
+  container.appendChild(toast);
+  refreshIcons();
+
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 300);
+  }, 4000);
 }
 
 // Safety helper to fetch current active visit of a patient
 function getCurrentVisit(p) {
-  if (!p.visits || p.visits.length === 0) {
-    p.visits = [{
-      date: getFormattedDateTime(),
-      examDate: "",
-      vitals: { temp: 98.6, weight: 70, bp: "120/80", pulse: 72 },
-      symptoms: "",
-      prevHistory: "",
-      physicalExam: "",
-      diagnosis: "",
-      medicines: [],
-      reports: [],
-      status: "WAITING_FOR_DOCTOR",
-      needsPharmacy: false,
-      needsRadiology: false,
-      pharmacyDispensed: false,
-      radiologyCompleted: false
-    }];
+  if (!p || !p.visits || p.visits.length === 0) {
+    if (p) {
+      p.visits = [{
+        date: getFormattedDateTime(),
+        examDate: "",
+        vitals: { temp: 98.6, weight: 70, bp: "120/80", pulse: 72 },
+        symptoms: "",
+        prevHistory: "",
+        familyHistory: "",
+        physicalExam: "",
+        diagnosis: "",
+        medicines: [],
+        reports: [],
+        status: "WAITING_FOR_DOCTOR",
+        consultationFee: 1000,
+        consultationDiscount: 0,
+        consultationPaid: true,
+        consultationPaymentMode: "Cash",
+        needsPharmacy: false,
+        pharmacyDispensed: false,
+        medicinesBillAmount: 0,
+        medicinesBillPaid: false,
+        needsRadiology: false,
+        radiologyCompleted: false,
+        radiologyBillAmount: 0,
+        radiologyBillPaid: false
+      }];
+    }
   }
   return p.visits[p.visits.length - 1];
 }
 
-// Schema upgrade logic for backward-compatibility with older simple patient structures
-function upgradeDatabaseSchema() {
-  patients.forEach(p => {
-    if (!p.visits) {
-      // Build a default visits array using legacy attributes
-      p.visits = [{
-        date: "02-Jul-2026 10:00",
-        examDate: p.status === "completed" ? "02-Jul-2026 10:30" : "",
-        vitals: p.vitals || { temp: 98.6, weight: 70, bp: "120/80", pulse: 72 },
-        symptoms: p.symptoms || "",
-        prevHistory: p.prevHistory || "",
-        physicalExam: p.physicalExam || "",
-        diagnosis: p.diagnosis || "",
-        medicines: p.medicines || [],
-        reports: p.reports || [],
-        status: p.status || "waiting",
-        needsPharmacy: p.needsPharmacy || false,
-        needsRadiology: p.needsRadiology || false,
-        pharmacyDispensed: p.pharmacyDispensed || false,
-        radiologyCompleted: p.radiologyCompleted || false
-      }];
-      
-      // Clear deprecated top level properties
-      delete p.vitals;
-      delete p.symptoms;
-      delete p.prevHistory;
-      delete p.physicalExam;
-      delete p.diagnosis;
-      delete p.medicines;
-      delete p.reports;
-      delete p.status;
-      delete p.needsPharmacy;
-      delete p.needsRadiology;
-      delete p.pharmacyDispensed;
-      delete p.radiologyCompleted;
-    } else {
-      // Ensure physicalExam, consultationPaid, and medicinesBillPaid are initialized on all visit objects
-      p.visits.forEach(v => {
-        if (v.physicalExam === undefined) {
-          v.physicalExam = "";
-        }
-        if (v.consultationPaid === undefined) {
-          v.consultationPaid = false;
-        }
-        if (v.medicinesBillPaid === undefined) {
-          v.medicinesBillPaid = false;
-        }
-        if (v.medicinesBillAmount === undefined) {
-          v.medicinesBillAmount = 0;
-        }
-      });
-    }
-  });
-}
-
-// Mock Data to initialize system if empty
-const mockPatients = [
-  {
-    id: "PAT-1001",
-    name: "Aarav Sharma",
-    age: 29,
-    gender: "Male",
-    phone: "9876543210",
-    bloodGroup: "O+",
-    visits: [
-      {
-        date: "28-Jun-2026 10:15",
-        examDate: "28-Jun-2026 10:40",
-        vitals: { temp: 98.4, weight: 75, bp: "120/80", pulse: 70 },
-        symptoms: "Mild seasonal allergies and sneezing.",
-        prevHistory: "None",
-        diagnosis: "Allergic Rhinitis",
-        medicines: [{ name: "Cetirizine", dose: "10mg", freq: "0-0-1", dur: "5 Days", dispensed: true }],
-        reports: [],
-        status: "completed",
-        needsPharmacy: true,
-        needsRadiology: false,
-        pharmacyDispensed: true,
-        radiologyCompleted: false
-      },
-      {
-        date: "02-Jul-2026 09:30",
-        examDate: "",
-        vitals: { temp: 98.6, weight: 75, bp: "122/82", pulse: 72 },
-        symptoms: "",
-        prevHistory: "Allergic Rhinitis",
-        diagnosis: "",
-        medicines: [],
-        reports: [],
-        status: "waiting",
-        needsPharmacy: false,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false
-      }
-    ],
-    logs: [
-      "Registered at Reception with mild allergies history.",
-      "First check-in completed. Diagnosed with Allergic Rhinitis.",
-      "New check-in registered for second visit on 02-Jul-2026."
-    ]
-  },
-  {
-    id: "PAT-1002",
-    name: "Priya Patel",
-    age: 44,
-    gender: "Female",
-    phone: "9988776655",
-    bloodGroup: "A-",
-    visits: [
-      {
-        date: "15-May-2026 14:00",
-        examDate: "15-May-2026 14:30",
-        vitals: { temp: 98.6, weight: 63, bp: "120/80", pulse: 72 },
-        symptoms: "Routine health checkup.",
-        prevHistory: "Seasonal asthma.",
-        diagnosis: "Healthy. Advised diet control and moderate exercise.",
-        medicines: [],
-        reports: [],
-        status: "completed",
-        needsPharmacy: false,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false
-      },
-      {
-        date: "02-Jul-2026 10:45",
-        examDate: "02-Jul-2026 11:15",
-        vitals: { temp: 101.2, weight: 62, bp: "135/85", pulse: 94 },
-        symptoms: "Persistent fever for 3 days, body ache and dry cough.",
-        prevHistory: "Known case of seasonal asthma, no major surgeries.",
-        diagnosis: "Acute Bronchitis and Upper Respiratory Tract Infection (URTI).",
-        medicines: [
-          { name: "Paracetamol", dose: "650mg", freq: "1-1-1", dur: "5 Days", dispensed: false },
-          { name: "Amoxicillin", dose: "500mg", freq: "1-0-1", dur: "7 Days", dispensed: false }
-        ],
-        reports: [
-          { name: "Chest X-Ray", status: "pending", findings: "" },
-          { name: "CBC & Blood Profile", status: "pending", findings: "" }
-        ],
-        status: "pending_pharmacy_radiology",
-        needsPharmacy: true,
-        needsRadiology: true,
-        pharmacyDispensed: false,
-        radiologyCompleted: false
-      }
-    ],
-    logs: [
-      "Registered first check-up. Advised health monitoring.",
-      "Returning check-in on 02-Jul-2026 with high fever.",
-      "Consultation completed by Doctor. Ordered medication check sheet and Chest X-ray."
-    ]
-  },
-  {
-    id: "PAT-1003",
-    name: "Rajesh Kumar",
-    age: 61,
-    gender: "Male",
-    phone: "9123456789",
-    bloodGroup: "B+",
-    visits: [
-      {
-        date: "02-Jul-2026 11:20",
-        examDate: "02-Jul-2026 11:55",
-        vitals: { temp: 97.9, weight: 88, bp: "145/95", pulse: 82 },
-        symptoms: "Mild chest tightness and chronic high blood pressure history.",
-        prevHistory: "Hypertension diagnosed 5 years ago, family history of CHD.",
-        diagnosis: "Essential Hypertension (Stage 2).",
-        medicines: [
-          { name: "Amlodipine", dose: "5mg", freq: "0-0-1", dur: "30 Days", dispensed: false },
-          { name: "Aspirin", dose: "75mg", freq: "1-0-0", dur: "30 Days", dispensed: false }
-        ],
-        reports: [],
-        status: "pending_pharmacy",
-        needsPharmacy: true,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false
-      }
-    ],
-    logs: [
-      "First check-in registered. BP noted high (145/95 mmHg).",
-      "Consultation finished by Doctor. Prescribed long-term antihypertensives."
-    ]
-  }
-];
-
-const mockLogs = [
-  { text: "System initialized with baseline clinic database.", type: "info", time: "10:00:00" },
-  { text: "Patient Aarav Sharma checked in at Reception.", type: "success", time: "10:05:12" },
-  { text: "Patient Priya Patel checked in with fever (101.2°F).", type: "warning", time: "10:12:45" },
-  { text: "Dr. completed prescription for Priya Patel; sent to Pharmacy & Labs.", type: "info", time: "10:22:30" }
-];
-
-// Initialize Application
-document.addEventListener("DOMContentLoaded", async () => {
-  setupAuth();
-  setupNavigation();
-  setupEventListeners();
-  setupReceptionSearch();
-  setupBillingEvents();
-  
-  // Check if user session exists in localStorage
-  const storedUser = localStorage.getItem("lifeline_hms_user");
-  if (storedUser) {
-    currentUser = JSON.parse(storedUser);
-    document.getElementById("auth-screen").style.display = "none";
-    document.querySelector(".app-container").style.display = "flex";
-    document.getElementById("header-user-name").textContent = currentUser.name;
-    document.getElementById("header-user-role").textContent = currentUser.role;
-    applyRoleBasedAccess(currentUser.role);
-    await initDatabase();
-  } else {
-    document.getElementById("auth-screen").style.display = "flex";
-    document.querySelector(".app-container").style.display = "none";
-  }
-  
-  // Refresh Lucide icons initially
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
-  startPollingUpdates();
-});
-
-function getRoleForView(viewName) {
-  if (viewName === "receptionist") return "receptionist";
-  if (viewName === "billing-consult") return "receptionist";
-  if (viewName === "billing-meds") return "receptionist";
-  if (['doc-queue', 'doc-complaints', 'doc-history', 'doc-diagnosis', 'doc-meds', 'doc-tests'].includes(viewName)) return "doctor";
-  if (viewName === "pharmacy") return "pharmacist";
-  if (viewName === "radiology") return "radiologist";
-  if (viewName === "registry") return "doctor";
-  if (viewName === "staff-mgmt") return "doctor";
-  return "";
-}
-
-function applyRoleBasedAccess(role) {
-  const staffNav = document.getElementById("staff-nav-menu");
-  const docNav = document.getElementById("doctor-nav-menu");
-  const navItems = document.querySelectorAll(".nav-menu .nav-item");
-  let defaultView = "receptionist";
-
-  if (role === "doctor") {
-    if (staffNav) staffNav.style.display = "none";
-    if (docNav) docNav.style.display = "block";
-    defaultView = "doc-queue";
-  } else {
-    if (staffNav) staffNav.style.display = "block";
-    if (docNav) docNav.style.display = "none";
-    
-    // Filter staff nav links so receptionist only sees receptionist, pharmacist only pharmacy, etc.
-    navItems.forEach(item => {
-      const viewName = item.getAttribute("data-view");
-      if (viewName && !viewName.startsWith("doc-") && viewName !== "registry") {
-        if (role === "receptionist" && (viewName === "receptionist" || viewName === "billing-consult" || viewName === "billing-meds")) {
-          item.style.display = "block";
-          defaultView = "receptionist";
-        } else if (role === "pharmacist" && viewName === "pharmacy") {
-          item.style.display = "block";
-          defaultView = "pharmacy";
-        } else if (role === "radiologist" && viewName === "radiology") {
-          item.style.display = "block";
-          defaultView = "radiology";
-        } else {
-          item.style.display = "none";
-        }
-      }
-    });
-  }
-
-  // Toggle Doctor Phase Navigator (Disabled for strict RBAC control)
-  const phaseNav = document.getElementById("doctor-phase-navigator");
-  if (phaseNav) {
-    phaseNav.style.display = "none";
-  }
-
-  // Toggle clear database visibility (doctor master handler only)
-  const btnClearDb = document.getElementById("btn-clear-db");
-  if (btnClearDb) {
-    if (role === "doctor") {
-      btnClearDb.style.display = "inline-flex";
-    } else {
-      btnClearDb.style.display = "none";
-    }
-  }
-
-  // Toggle Doctor Staff Directory visibility (only visible to doctor)
-  const navDocStaff = document.getElementById("nav-doc-staff");
-  if (navDocStaff) {
-    if (role === "doctor") {
-      navDocStaff.style.display = "block";
-    } else {
-      navDocStaff.style.display = "none";
-    }
-  }
-
-  // Switch to default view
-  const targetNav = Array.from(navItems).find(item => item.getAttribute("data-view") === defaultView);
-  if (targetNav) {
-    targetNav.click();
-  }
-}
+// =========================================================================
+// 1. AUTHENTICATION & ROLE MANAGEMENT
+// =========================================================================
 
 function setupAuth() {
+  const overlay = document.getElementById("auth-modal-overlay");
+  const mainApp = document.getElementById("main-app");
   const tabLogin = document.getElementById("tab-login");
   const tabRegister = document.getElementById("tab-register");
   const formLogin = document.getElementById("auth-login-form");
   const formRegister = document.getElementById("auth-register-form");
-  const loginErrorMsg = document.getElementById("login-error-msg");
-  const registerErrorMsg = document.getElementById("register-error-msg");
+  const loginErr = document.getElementById("login-error-msg");
+  const regErr = document.getElementById("register-error-msg");
 
-  // Tab switching
   tabLogin.addEventListener("click", () => {
     tabLogin.classList.add("active");
+    tabLogin.style.background = "#fff";
+    tabLogin.style.color = "var(--primary-purple)";
     tabRegister.classList.remove("active");
-    formLogin.classList.add("active");
-    formRegister.classList.remove("active");
-    loginErrorMsg.style.display = "none";
-    registerErrorMsg.style.display = "none";
+    tabRegister.style.background = "transparent";
+    tabRegister.style.color = "var(--text-secondary)";
+    formLogin.style.display = "block";
+    formRegister.style.display = "none";
   });
 
   tabRegister.addEventListener("click", () => {
     tabRegister.classList.add("active");
+    tabRegister.style.background = "#fff";
+    tabRegister.style.color = "var(--primary-purple)";
     tabLogin.classList.remove("active");
-    formRegister.classList.add("active");
-    formLogin.classList.remove("active");
-    loginErrorMsg.style.display = "none";
-    registerErrorMsg.style.display = "none";
+    tabLogin.style.background = "transparent";
+    tabLogin.style.color = "var(--text-secondary)";
+    formRegister.style.display = "block";
+    formLogin.style.display = "none";
   });
 
-  // Login submit
+  // Live Animated Character Avatar Preview Handler
+  const regNameInput = document.getElementById("reg-name");
+  const regGenderSelect = document.getElementById("reg-gender");
+  const regPhotoInput = document.getElementById("reg-photo");
+  const avatarPreview = document.getElementById("reg-avatar-preview");
+
+  function updateAvatarPreview() {
+    if (!avatarPreview) return;
+    const customUrl = regPhotoInput ? regPhotoInput.value.trim() : "";
+    if (customUrl) {
+      avatarPreview.src = customUrl;
+    } else {
+      const name = regNameInput ? regNameInput.value.trim() : "Staff";
+      const gender = regGenderSelect ? regGenderSelect.value : "Female";
+      avatarPreview.src = getClientAnimatedAvatar(name, gender);
+    }
+  }
+
+  if (regNameInput) regNameInput.addEventListener("input", updateAvatarPreview);
+  if (regGenderSelect) regGenderSelect.addEventListener("change", updateAvatarPreview);
+  if (regPhotoInput) regPhotoInput.addEventListener("input", updateAvatarPreview);
+
   formLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
-    loginErrorMsg.style.display = "none";
-    
+    loginErr.style.display = "none";
     const username = document.getElementById("login-username").value.trim();
-    const password = document.getElementById("login-password").value;
+    const password = document.getElementById("login-password").value.trim();
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -398,2961 +204,1554 @@ function setupAuth() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
       });
-      
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Login failed");
-      }
+      if (!res.ok) throw new Error(data.error || "Login failed");
 
       currentUser = data.user;
-      localStorage.setItem("lifeline_hms_user", JSON.stringify(currentUser));
-      
-      // Update UI & load DB
-      document.getElementById("auth-screen").style.display = "none";
-      document.querySelector(".app-container").style.display = "flex";
-      document.getElementById("header-user-name").textContent = currentUser.name;
-      document.getElementById("header-user-role").textContent = currentUser.role;
-      
-      applyRoleBasedAccess(currentUser.role);
-      await initDatabase();
-      formLogin.reset();
-      
-      addLog(`${currentUser.name} (${currentUser.role}) logged in.`, "info");
+      localStorage.setItem("lifeline_user", JSON.stringify(currentUser));
+      initUserSession();
+      showToast("Welcome Back", `Logged in as ${currentUser.name} (${currentUser.role.toUpperCase()})`, "success");
     } catch (err) {
-      loginErrorMsg.textContent = err.message;
-      loginErrorMsg.style.display = "block";
+      loginErr.textContent = err.message;
+      loginErr.style.display = "block";
     }
   });
 
-  // Register submit
   formRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
-    registerErrorMsg.style.display = "none";
-    
-    const name = document.getElementById("register-name").value.trim();
-    const username = document.getElementById("register-username").value.trim();
-    const password = document.getElementById("register-password").value;
-    const role = document.getElementById("register-role").value;
+    regErr.style.display = "none";
+    const name = document.getElementById("reg-name").value.trim();
+    const username = document.getElementById("reg-username").value.trim();
+    const password = document.getElementById("reg-password").value.trim();
+    const role = document.getElementById("reg-role").value;
+    const gender = document.getElementById("reg-gender").value;
+    const specialty = document.getElementById("reg-specialty").value.trim();
+    const room = document.getElementById("reg-room").value.trim();
+    const phone = document.getElementById("reg-phone").value.trim();
+    const image = document.getElementById("reg-photo").value.trim();
 
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, username, password, role })
+        body: JSON.stringify({
+          name,
+          username,
+          password,
+          role,
+          gender,
+          specialty,
+          room,
+          phone,
+          image
+        })
       });
-      
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Registration failed");
-      }
+      if (!res.ok) throw new Error(data.error || "Registration failed");
 
-      // Log in automatically after registration
       currentUser = data.user;
-      localStorage.setItem("lifeline_hms_user", JSON.stringify(currentUser));
-      
-      // Update UI & load DB
-      document.getElementById("auth-screen").style.display = "none";
-      document.querySelector(".app-container").style.display = "flex";
-      document.getElementById("header-user-name").textContent = currentUser.name;
-      document.getElementById("header-user-role").textContent = currentUser.role;
-      
-      applyRoleBasedAccess(currentUser.role);
-      await initDatabase();
-      formRegister.reset();
-      
-      addLog(`New staff user registered and logged in: ${currentUser.name} (${currentUser.role}).`, "success");
+      localStorage.setItem("lifeline_user", JSON.stringify(currentUser));
+      initUserSession();
+      showToast("Staff Account Created", `Welcome, ${currentUser.name}! Dynamic character avatar assigned.`, "success");
     } catch (err) {
-      registerErrorMsg.textContent = err.message;
-      registerErrorMsg.style.display = "block";
+      regErr.textContent = err.message;
+      regErr.style.display = "block";
     }
   });
 
-  // Log out button
   document.getElementById("btn-logout").addEventListener("click", () => {
-    if (currentUser) {
-      addLog(`${currentUser.name} logged out.`, "info");
-    }
+    localStorage.removeItem("lifeline_user");
     currentUser = null;
-    localStorage.removeItem("lifeline_hms_user");
-    
-    document.getElementById("auth-screen").style.display = "flex";
-    document.querySelector(".app-container").style.display = "none";
-    
-    loginErrorMsg.style.display = "none";
-    registerErrorMsg.style.display = "none";
-    formLogin.reset();
-    formRegister.reset();
+    overlay.classList.add("active");
+    mainApp.style.display = "none";
+    showToast("Logged Out", "You have been logged out securely.", "info");
   });
 }
 
-// Database Handling
-async function initDatabase() {
-  try {
-    const pResponse = await fetch('/api/patients');
-    patients = await pResponse.json();
-    upgradeDatabaseSchema();
-    
-    const lResponse = await fetch('/api/logs');
-    logs = await lResponse.json();
-    
-    renderActivityLog();
-    renderAllQueues();
-    if (document.querySelector(".nav-item.active") && document.querySelector(".nav-item.active").getAttribute("data-view") === "registry") {
-      renderRegistryTable();
-    }
-  } catch (err) {
-    console.warn("API database connection failed, falling back to LocalStorage...", err);
-    let storedPatients = localStorage.getItem("lifeline_hms_patients");
-    let storedLogs = localStorage.getItem("lifeline_hms_logs");
-    
-    // Migration path: if new keys don't exist, check for old keys
-    if (!storedPatients && !storedLogs) {
-      const oldPatients = localStorage.getItem("apex_hms_patients");
-      const oldLogs = localStorage.getItem("apex_hms_logs");
-      if (oldPatients || oldLogs) {
-        if (oldPatients) {
-          localStorage.setItem("lifeline_hms_patients", oldPatients);
-          storedPatients = oldPatients;
-          localStorage.removeItem("apex_hms_patients");
-        }
-        if (oldLogs) {
-          localStorage.setItem("lifeline_hms_logs", oldLogs);
-          storedLogs = oldLogs;
-          localStorage.removeItem("apex_hms_logs");
-        }
-      }
-    }
-    
-    if (storedPatients) {
-      patients = JSON.parse(storedPatients);
-      upgradeDatabaseSchema();
-    } else {
-      patients = [...mockPatients];
-      localStorage.setItem("lifeline_hms_patients", JSON.stringify(patients));
-    }
-    
-    if (storedLogs) {
-      logs = JSON.parse(storedLogs);
-    } else {
-      logs = [...mockLogs];
-      localStorage.setItem("lifeline_hms_logs", JSON.stringify(logs));
-    }
-    
-    renderActivityLog();
+function initUserSession() {
+  const overlay = document.getElementById("auth-modal-overlay");
+  const mainApp = document.getElementById("main-app");
+  overlay.classList.remove("active");
+  mainApp.style.display = "grid";
+
+  document.getElementById("user-display-name").textContent = currentUser.name || currentUser.username;
+  document.getElementById("user-display-role").textContent = (currentUser.role || 'Staff').toUpperCase();
+  document.getElementById("view-greeting").textContent = `Hello, ${currentUser.name || currentUser.username}`;
+
+  const avatarImg = document.getElementById("user-avatar-img");
+  if (avatarImg && currentUser.image) {
+    avatarImg.src = currentUser.image;
   }
+
+  applyRolePermissions(currentUser.role);
+  loadInitialData();
 }
 
-function saveDatabase() {
-  localStorage.setItem("lifeline_hms_patients", JSON.stringify(patients));
-  localStorage.setItem("lifeline_hms_logs", JSON.stringify(logs));
+function applyRolePermissions(role) {
+  const navItems = document.querySelectorAll(".nav-menu .nav-item");
+  let defaultView = "receptionist";
+
+  navItems.forEach(item => {
+    const view = item.getAttribute("data-view");
+    if (role === "admin") {
+      item.style.display = "block";
+      defaultView = "admin";
+    } else if (role === "doctor") {
+      item.style.display = (view === "doc-queue" || view === "registry") ? "block" : "none";
+      defaultView = "doc-queue";
+    } else if (role === "receptionist") {
+      item.style.display = (view === "receptionist" || view === "registry") ? "block" : "none";
+      defaultView = "receptionist";
+    } else if (role === "pharmacist") {
+      item.style.display = (view === "pharmacy" || view === "registry") ? "block" : "none";
+      defaultView = "pharmacy";
+    } else if (role === "radiologist") {
+      item.style.display = (view === "radiology" || view === "registry") ? "block" : "none";
+      defaultView = "radiology";
+    }
+  });
+
+  switchView(defaultView);
 }
 
-async function updatePatientRecord(p) {
-  try {
-    const res = await fetch(`/api/patients/${p.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(p)
-    });
-    if (!res.ok) throw new Error("Update failed");
-    // Refresh memory cache
-    const pResponse = await fetch('/api/patients');
-    patients = await pResponse.json();
-    return true;
-  } catch (err) {
-    console.warn("Failed to sync patient with server, falling back to local storage:", err);
-    saveDatabase();
-    return false;
-  }
+function switchView(viewName) {
+  const navItems = document.querySelectorAll(".nav-menu .nav-item");
+  const viewPanels = document.querySelectorAll(".view-panel");
+
+  navItems.forEach(n => {
+    if (n.getAttribute("data-view") === viewName) n.classList.add("active");
+    else n.classList.remove("active");
+  });
+
+  viewPanels.forEach(p => {
+    if (p.id === `view-${viewName}`) p.classList.add("active");
+    else p.classList.remove("active");
+  });
+
+  if (viewName === "receptionist") renderReceptionDesk();
+  else if (viewName === "doc-queue") renderDoctorDesk();
+  else if (viewName === "pharmacy") renderPharmacyDesk();
+  else if (viewName === "radiology") renderRadiologyDesk();
+  else if (viewName === "registry") renderRegistryDesk();
+  else if (viewName === "admin") renderAdminDesk();
+
+  refreshIcons();
 }
 
-// Navigation View Controller
 function setupNavigation() {
-  const navItems = document.querySelectorAll(".nav-item");
-  const views = document.querySelectorAll(".view-panel");
-  const viewTitle = document.getElementById("view-title");
-  const viewSubtitle = document.getElementById("view-subtitle");
-  
-  const viewDetails = {
-    receptionist: {
-      title: "Reception Desk",
-      subtitle: "Phase 1: Patient registration, check-in and vitals collection."
-    },
-    'billing-consult': {
-      title: "Consultation Billing Desk",
-      subtitle: "Phase 1: Review and collect consultation/visiting fees for registered patients."
-    },
-    'billing-meds': {
-      title: "Pharmacy Billing Desk",
-      subtitle: "Phase 3: Review and collect prescription medication payments."
-    },
-    'doc-queue': {
-      title: "Doctor's Patient Queue",
-      subtitle: "Waiting Patients: Select a patient from the queue or search patient records."
-    },
-    'doc-complaints': {
-      title: "Patient Complaints",
-      subtitle: "Consultation Step 1: Vitals review and present complaints (symptoms)."
-    },
-    'doc-history': {
-      title: "Patient Past History",
-      subtitle: "Consultation Step 2: Patient's past medical history and family history."
-    },
-    'doc-diagnosis': {
-      title: "Patient Diagnosis",
-      subtitle: "Consultation Step 3: Physical & chest examination and primary diagnosis."
-    },
-    'doc-meds': {
-      title: "Medications & Remedies",
-      subtitle: "Consultation Step 4: Add medications and formulate prescription."
-    },
-    'doc-tests': {
-      title: "Scans & Diagnostic Tests",
-      subtitle: "Consultation Step 5: Select radiology/laboratory investigations and finalize visit."
-    },
-    pharmacy: {
-      title: "Medical Dispensary",
-      subtitle: "Phase 3: Verify prescriptions, dispense medicines, and close pharmacy orders."
-    },
-    radiology: {
-      title: "Radiology & Diagnostics",
-      subtitle: "Phase 3: Conduct ordered scans/tests and log diagnostic findings."
-    },
-    registry: {
-      title: "Central Patient Registry",
-      subtitle: "Archival Record: Complete access to electronic health records (EHR) of all patients."
-    },
-    'staff-mgmt': {
-      title: "Staff Management Console",
-      subtitle: "Admin Panel: View clinic personnel details and manage registered credentials."
-    }
-  };
-  
+  const navItems = document.querySelectorAll(".nav-menu .nav-item");
   navItems.forEach(item => {
     item.addEventListener("click", () => {
-      if (item.classList.contains("disabled-nav")) {
-        return;
-      }
-      
-      const viewName = item.getAttribute("data-view");
-      
-      // Enforce role-based permission
-      if (currentUser) {
-        const expectedRole = getRoleForView(viewName);
-        if (currentUser.role !== expectedRole) {
-          console.warn(`Access denied for role ${currentUser.role} to view ${viewName}`);
-          return;
-        }
-      }
-      
-      // Toggle nav active classes
-      navItems.forEach(nav => nav.classList.remove("active"));
-      item.classList.add("active");
-      
-      // Toggle view panel active classes
-      views.forEach(view => view.classList.remove("active"));
-      document.getElementById(`view-${viewName}`).classList.add("active");
-      
-      // Update top bar text
-      if (viewDetails[viewName]) {
-        viewTitle.textContent = viewDetails[viewName].title;
-        viewSubtitle.textContent = viewDetails[viewName].subtitle;
-      }
-      
-      // Determine if we are changing main panels or just doctor workflow sub-tabs
-      const isDoctorSubTab = ['doc-queue', 'doc-complaints', 'doc-history', 'doc-diagnosis', 'doc-meds', 'doc-tests'].includes(viewName);
-      
-      if (!isDoctorSubTab && viewName !== "registry" && viewName !== "staff-mgmt") {
-        deselectAllViews();
-        renderAllQueues();
-      } else if (viewName === "registry") {
-        deselectAllViews();
-        renderRegistryTable();
-      } else if (viewName === "staff-mgmt") {
-        deselectAllViews();
-        renderStaffMgmtTable();
-      } else {
-        // Switching between doctor subtabs
-        if (viewName === "doc-meds") {
-          renderDoctorPrescriptionMeds();
-        }
-      }
+      const view = item.getAttribute("data-view");
+      if (view) switchView(view);
     });
   });
 }
 
-function deselectAllViews() {
-  activeConsultationPatient = null;
-  activePharmacyPatient = null;
-  activeRadiologyPatient = null;
-  activeBillingPatient = null;
-  currentPrescriptionMeds = [];
-  
-  // Hide all patient banners
-  document.querySelectorAll(".active-patient-banner").forEach(el => {
-    el.style.display = "none";
-    el.innerHTML = "";
-  });
-  
-  // Reset all consultation inputs
-  const symptomsInput = document.getElementById("doc-symptoms");
-  if (symptomsInput) symptomsInput.value = "";
-  const prevHistoryInput = document.getElementById("doc-prev-history");
-  if (prevHistoryInput) prevHistoryInput.value = "";
-  const familyHistoryInput = document.getElementById("doc-family-history");
-  if (familyHistoryInput) familyHistoryInput.value = "";
-  const examInput = document.getElementById("doc-exam");
-  if (examInput) examInput.value = "";
-  const diagnosisInput = document.getElementById("doc-diagnosis");
-  if (diagnosisInput) diagnosisInput.value = "";
+// =========================================================================
+// 2. DATA LOADING & REAL-TIME SYNC
+// =========================================================================
 
-  // Reset medicine inputs
-  const medName = document.getElementById("med-name-input");
-  if (medName) medName.value = "";
-  const medDose = document.getElementById("med-dose-input");
-  if (medDose) medDose.value = "";
-  const medFreq = document.getElementById("med-freq-input");
-  if (medFreq) medFreq.value = "";
-  const medDur = document.getElementById("med-dur-input");
-  if (medDur) medDur.value = "";
-  
-  // Clear lab report checkboxes
-  document.querySelectorAll('input[name="lab-report"]').forEach(cb => cb.checked = false);
+async function loadInitialData() {
+  try {
+    const [pRes, sRes, mRes, dRes] = await Promise.all([
+      fetch("/api/patients"),
+      fetch("/api/scans"),
+      fetch("/api/medicines"),
+      fetch("/api/doctors")
+    ]);
 
-  // Disable consultation tabs on doctor menu
-  document.querySelectorAll("#doctor-nav-menu .nav-item[data-view^='doc-']").forEach(item => {
-    if (item.getAttribute("data-view") !== "doc-queue") {
-      item.classList.add("disabled-nav");
-    }
-  });
+    if (pRes.ok) patients = await pRes.json();
+    if (sRes.ok) masterScans = await sRes.json();
+    if (mRes.ok) masterMedicines = await mRes.json();
+    if (dRes.ok) masterDoctors = await dRes.json();
 
-  // Billing Desk reset
-  const billConsultCard = document.getElementById("billing-details-consult-card");
-  if (billConsultCard) billConsultCard.style.display = "none";
-  const billConsultPlaceholder = document.getElementById("billing-placeholder-consult-card");
-  if (billConsultPlaceholder) billConsultPlaceholder.style.display = "block";
-
-  const billMedsCard = document.getElementById("billing-details-meds-card");
-  if (billMedsCard) billMedsCard.style.display = "none";
-  const billMedsPlaceholder = document.getElementById("billing-placeholder-meds-card");
-  if (billMedsPlaceholder) billMedsPlaceholder.style.display = "block";
-
-  // Pharmacy & Radiology views reset
-  const phCard = document.getElementById("pharmacy-dispense-card");
-  if (phCard) phCard.style.display = "none";
-  const phPlaceholder = document.getElementById("pharmacy-placeholder-card");
-  if (phPlaceholder) phPlaceholder.style.display = "block";
-  
-  const radCard = document.getElementById("radiology-report-card");
-  if (radCard) radCard.style.display = "none";
-  const radPlaceholder = document.getElementById("radiology-placeholder-card");
-  if (radPlaceholder) radPlaceholder.style.display = "block";
-  
-  const regCard = document.getElementById("registry-detail-card");
-  if (regCard) regCard.classList.remove("active");
-
-  document.querySelectorAll(".pharmacy-tab").forEach((btn, idx) => {
-    if (idx === 0) {
-      btn.classList.add("btn-primary", "active");
-      btn.classList.remove("btn-secondary");
-    } else {
-      btn.classList.remove("btn-primary", "active");
-      btn.classList.add("btn-secondary");
-    }
-  });
-  const phActivePane = document.getElementById("ph-active-pane");
-  if (phActivePane) phActivePane.style.display = "block";
-  const phRefillPane = document.getElementById("ph-refill-pane");
-  if (phRefillPane) phRefillPane.style.display = "none";
-  const phCustomPane = document.getElementById("ph-custom-pane");
-  if (phCustomPane) phCustomPane.style.display = "none";
+    populateScansDropdown();
+    setupSmartDrugAutocomplete();
+    setupDrugCatalogModal();
+    refreshCurrentView();
+    startPolling();
+  } catch (err) {
+    console.error("Initial data load failed:", err);
+  }
 }
 
-// Event Listeners setup
-function setupEventListeners() {
-  // Doctor Redirect Buttons
-  document.querySelectorAll(".btn-redirect").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const target = btn.getAttribute("data-target");
-      const navItem = document.querySelector(`.nav-item[data-view="${target}"]`);
-      if (navItem) {
-        navItem.click();
-      }
-    });
-  });
-
-  // Clinical Workflow Next Tab Buttons
-  document.querySelectorAll(".btn-next-tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const nextView = btn.getAttribute("data-next");
-      const targetNav = document.getElementById(`nav-${nextView}`);
-      if (targetNav) {
-        targetNav.click();
-      } else {
-        // Find by data-view attribute
-        const subNav = document.querySelector(`#doctor-nav-menu .nav-item[data-view='${nextView}']`);
-        if (subNav) subNav.click();
-      }
-    });
-  });
-
-  // Clinical Visit History Modal Close Button
-  const btnClosePastModal = document.getElementById("btn-close-past-modal");
-  if (btnClosePastModal) {
-    btnClosePastModal.addEventListener("click", () => {
-      const modal = document.getElementById("past-visits-modal");
-      if (modal) modal.style.display = "none";
-    });
+function refreshCurrentView() {
+  const activeNav = document.querySelector(".nav-menu .nav-item.active");
+  if (activeNav) {
+    const view = activeNav.getAttribute("data-view");
+    if (view) switchView(view);
   }
+}
 
-  // Clear DB Button
-  document.getElementById("btn-clear-db").addEventListener("click", async () => {
-    if (confirm("Are you sure you want to reset the database? All custom inputs will be lost.")) {
-      try {
-        const res = await fetch('/api/reset', { method: 'POST' });
-        if (!res.ok) throw new Error("Reset failed");
-        await initDatabase();
-        deselectAllViews();
-        alert("Database reset completed successfully!");
-      } catch (err) {
-        console.warn("Server reset failed, falling back to LocalStorage:", err);
-        localStorage.removeItem("lifeline_hms_patients");
-        localStorage.removeItem("lifeline_hms_logs");
-        localStorage.removeItem("apex_hms_patients");
-        localStorage.removeItem("apex_hms_logs");
-        patients = [...mockPatients];
-        logs = [...mockLogs];
-        saveDatabase();
-        deselectAllViews();
-        renderAllQueues();
-        renderRegistryTable();
-        renderActivityLog();
-        addLog("Database reset to factory settings.", "danger");
-        alert("Database reset completed successfully!");
-      }
-    }
-  });
-
-  // Pharmacist Add Medicine Button
-  const btnPhAddMed = document.getElementById("btn-ph-add-med");
-  if (btnPhAddMed) {
-    btnPhAddMed.addEventListener("click", async () => {
-      if (!activePharmacyPatient) return;
-      const p = patients.find(pat => pat.id === activePharmacyPatient.id);
-      const cv = getCurrentVisit(p);
-      
-      const medNameInput = document.getElementById("ph-add-med-name");
-      const medDoseInput = document.getElementById("ph-add-med-dose");
-      const medFreqInput = document.getElementById("ph-add-med-freq");
-      const medDurInput = document.getElementById("ph-add-med-dur");
-      const medPriceInput = document.getElementById("ph-add-med-price");
-      
-      const medName = medNameInput.value.trim();
-      const medPriceStr = medPriceInput.value.trim();
-      
-      if (!medName) {
-        alert("Please enter a medicine name.");
-        medNameInput.focus();
-        return;
-      }
-      if (!medPriceStr) {
-        alert("Please enter a medicine price.");
-        medPriceInput.focus();
-        return;
-      }
-      
-      const medPrice = parseFloat(medPriceStr) || 0;
-      
-      // Save currently entered prices first so they aren't lost
-      const priceInputs = document.querySelectorAll(".pharmacy-med-price");
-      priceInputs.forEach((input, index) => {
-        const val = parseFloat(input.value) || 0;
-        if (cv.medicines[index]) {
-          cv.medicines[index].price = val;
-        }
-      });
-      
-      // Add the new medicine
-      cv.medicines.push({
-        name: medName,
-        dose: medDoseInput.value.trim() || "N/A",
-        freq: medFreqInput.value.trim() || "1-0-1",
-        dur: medDurInput.value.trim() || "5 Days",
-        price: medPrice,
-        dispensed: false
-      });
-      
-      // Re-calculate the bill amount locally
-      let totalMedsPrice = 0;
-      cv.medicines.forEach(m => {
-        totalMedsPrice += parseFloat(m.price) || 0;
-      });
-      cv.medicinesBillAmount = totalMedsPrice;
-      
-      await updatePatientRecord(p);
-      
-      // Clear inputs
-      medNameInput.value = "";
-      medDoseInput.value = "";
-      medFreqInput.value = "";
-      medDurInput.value = "";
-      medPriceInput.value = "";
-      
-      // Refresh display card
-      selectPatientForPharmacy(p.id);
-    });
-  }
-
-  // Receptionist Tab switching
-  document.querySelectorAll(".reception-tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".reception-tab").forEach(b => {
-        b.classList.remove("btn-primary", "active");
-        b.classList.add("btn-secondary");
-      });
-      btn.classList.remove("btn-secondary");
-      btn.classList.add("btn-primary", "active");
-      
-      const tab = btn.getAttribute("data-tab");
-      document.querySelectorAll(".reception-tab-pane").forEach(pane => {
-        pane.style.display = pane.id === `${tab}-tab-pane` ? "block" : "none";
-      });
-      
-      const viewTitle = document.getElementById("view-title");
-      const viewSubtitle = document.getElementById("view-subtitle");
-      if (tab === "intake") {
-        viewTitle.textContent = "Reception Desk";
-        viewSubtitle.textContent = "Phase 1: Patient registration, check-in and vitals collection.";
-      } else {
-        viewTitle.textContent = "Reception Billing Desk";
-        viewSubtitle.textContent = "Phase 1 / 3: Collect consultation fees and process pharmacy prescription payments.";
-      }
-    });
-  });
-
-  // Pharmacy Tab switching
-  document.querySelectorAll(".pharmacy-tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".pharmacy-tab").forEach(b => {
-        b.classList.remove("btn-primary", "active");
-        b.classList.add("btn-secondary");
-      });
-      btn.classList.remove("btn-secondary");
-      btn.classList.add("btn-primary", "active");
-      
-      const tab = btn.getAttribute("data-tab");
-      const paneIds = {
-        "active-queue": "ph-active-pane",
-        "refill-desk": "ph-refill-pane",
-        "custom-rx": "ph-custom-pane"
-      };
-      
-      document.querySelectorAll(".pharmacy-tab-pane").forEach(pane => {
-        pane.style.display = pane.id === paneIds[tab] ? "block" : "none";
-      });
-
-      const viewTitle = document.getElementById("view-title");
-      const viewSubtitle = document.getElementById("view-subtitle");
-      if (tab === "active-queue") {
-        viewTitle.textContent = "Medical Dispensary";
-        viewSubtitle.textContent = "Phase 3: Verify prescriptions, dispense medicines, and close pharmacy orders.";
-        renderPharmacyQueue();
-      } else if (tab === "refill-desk") {
-        viewTitle.textContent = "Medical Dispensary - Refill & Re-issue";
-        viewSubtitle.textContent = "Reload past patient visit records to re-issue prescriptions and skip consultation queue.";
-      } else {
-        viewTitle.textContent = "Medical Dispensary - Custom Prescription";
-        viewSubtitle.textContent = "Formulate a custom prescription sheet directly from the pharmacy medicines directory.";
-        renderCustomMedsDirectory();
-      }
-    });
-  });
-
-  // Initialize Pharmacy Refill Registry Events
-  setupPharmacyRefillEvents();
-
-  // Phase 1: Receptionist Intake Form Submission
-  const intakeForm = document.getElementById("reception-intake-form");
-  intakeForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    
-    const name = document.getElementById("p-name").value;
-    const age = parseInt(document.getElementById("p-age").value);
-    const gender = document.getElementById("p-gender").value;
-    const phone = document.getElementById("p-phone").value;
-    const blood = document.getElementById("p-blood").value;
-    
-    const temp = parseFloat(document.getElementById("v-temp").value);
-    const weight = parseFloat(document.getElementById("v-weight").value);
-    const bp = document.getElementById("v-bp").value;
-    const pulse = parseInt(document.getElementById("v-pulse").value);
-    
-    const currentDateTime = getFormattedDateTime();
-    const vitals = { temp, weight, bp, pulse };
-
-    // Reset matched state UI
-    matchedPatientForIntake = null;
-    document.getElementById("reception-match-alert").style.display = "none";
+let pollTimer = null;
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if (!currentUser) return;
+    const isTyping = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+    if (isTyping) return;
 
     try {
-      const response = await fetch('/api/patients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, age, gender, phone, bloodGroup: blood, vitals })
-      });
-      
-      if (!response.ok) throw new Error('Server intake failed');
-      
-      await initDatabase();
-      intakeForm.reset();
-    } catch (err) {
-      console.warn("Server intake failed, falling back to local storage...", err);
-      const newVisit = {
-        date: currentDateTime,
-        examDate: "",
-        vitals,
-        symptoms: "",
-        prevHistory: "",
-        diagnosis: "",
-        medicines: [],
-        reports: [],
-        status: "waiting",
-        needsPharmacy: false,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false,
-        consultationFee: 1000,
-        consultationDiscount: 0,
-        consultationPaid: false,
-        medicinesBillPaid: false,
-        medicinesBillAmount: 0
-      };
-
-      let p = patients.find(pat => pat.phone === phone || pat.name.toLowerCase() === name.toLowerCase());
-      if (p) {
-        p.age = age;
-        p.phone = phone;
-        p.bloodGroup = blood;
-        const lastVisit = getCurrentVisit(p);
-        if (lastVisit) {
-          newVisit.prevHistory = lastVisit.prevHistory || lastVisit.diagnosis || "";
+      const res = await fetch("/api/patients");
+      if (res.ok) {
+        const fresh = await res.json();
+        if (JSON.stringify(fresh) !== JSON.stringify(patients)) {
+          patients = fresh;
+          refreshCurrentView();
         }
-        p.visits.push(newVisit);
-        p.logs.push(`New check-in on ${currentDateTime} with vitals: Temp ${temp}°F, BP ${bp}, Pulse ${pulse}bpm.`);
-        addLog(`Returning patient ${p.name} (${p.id}) checked in.`, "success");
-      } else {
-        const newId = `PAT-${1000 + patients.length + 1}`;
-        p = {
-          id: newId,
-          name,
-          age,
-          gender,
-          phone,
-          bloodGroup: blood,
-          visits: [newVisit],
-          logs: [`Registered at reception on ${currentDateTime} with vitals: Temp ${temp}°F, BP ${bp}.`]
-        };
-        patients.push(p);
-        addLog(`New patient registered: ${name} (${newId}).`, "success");
       }
-      saveDatabase();
-      intakeForm.reset();
-      renderAllQueues();
+    } catch (e) {
+      console.warn("Polling error:", e);
     }
-  });
+  }, 5000);
+}
 
-  // Phase 2: Doctor Search Input
-  const docSearch = document.getElementById("doctor-search-input");
-  docSearch.addEventListener("input", (e) => {
-    const query = e.target.value.toLowerCase().trim();
-    const searchResultsDiv = document.getElementById("doctor-search-results");
-    
-    if (query === "") {
-      searchResultsDiv.style.display = "none";
-      searchResultsDiv.innerHTML = "";
-      return;
-    }
-    
-    const filtered = patients.filter(p => 
-      p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query)
-    );
-    
-    searchResultsDiv.innerHTML = "";
-    searchResultsDiv.style.display = "flex";
-    
-    if (filtered.length === 0) {
-      searchResultsDiv.innerHTML = `<div class="no-data" style="padding:1rem;">No matching patients found.</div>`;
-      return;
-    }
-    
-    filtered.forEach(p => {
-      const card = document.createElement("div");
-      card.className = "patient-card";
-      card.style.padding = "0.75rem 1rem";
-      card.style.borderColor = "rgba(6, 182, 212, 0.2)";
-      card.innerHTML = `
-        <div class="patient-info">
-          <div class="patient-header">
-            <span class="patient-name">${p.name}</span>
-            <span class="patient-id">${p.id}</span>
-            ${getStatusBadge(p)}
-          </div>
-          <div class="patient-meta">${p.gender}, ${p.age} years | Contact: ${maskPhone(p.phone)}</div>
-        </div>
-        <button class="btn btn-primary btn-sm btn-select-search-patient" data-id="${p.id}">Select</button>
-      `;
-      searchResultsDiv.appendChild(card);
-    });
-    
-    // Add selectors
-    document.querySelectorAll(".btn-select-search-patient").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-id");
-        selectPatientForConsultation(id);
-        docSearch.value = "";
-        searchResultsDiv.style.display = "none";
-      });
+// =========================================================================
+// 2.5. SMART DRUG FORMULARY & BRAND SUGGESTION ENGINE
+// =========================================================================
+
+let selectedCatalogCategory = "ALL";
+
+function setupDrugCatalogModal() {
+  const modal = document.getElementById("drug-catalog-modal");
+  const btnClose = document.getElementById("btn-close-drug-catalog");
+  const openBtns = document.querySelectorAll(".btn-open-drug-catalog");
+  const searchInput = document.getElementById("modal-drug-search-input");
+  const catFilterBtns = document.querySelectorAll("#modal-drug-cat-filters .drug-cat-filter-btn");
+
+  if (!modal) return;
+
+  openBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      modal.classList.add("active");
+      renderDrugCatalogCards();
+      refreshIcons();
     });
   });
 
-  // Doctor: Deselect button
-  const btnCloseConsultation = document.getElementById("btn-close-consultation");
-  if (btnCloseConsultation) {
-    btnCloseConsultation.addEventListener("click", () => {
-      deselectAllViews();
+  if (btnClose) {
+    btnClose.addEventListener("click", () => {
+      modal.classList.remove("active");
     });
   }
 
-  // Doctor: Add Medicine to prescription
-  document.getElementById("btn-add-med").addEventListener("click", () => {
-    const name = document.getElementById("med-name-input").value.trim();
-    const dose = document.getElementById("med-dose-input").value.trim();
-    const freq = document.getElementById("med-freq-input").value.trim();
-    const dur = document.getElementById("med-dur-input").value.trim();
-    
-    if (!name) {
-      alert("Please enter medicine name.");
-      return;
-    }
-    
-    currentPrescriptionMeds.push({
-      name,
-      dose: dose || "N/A",
-      freq: freq || "1-0-1",
-      dur: dur || "5 Days",
-      dispensed: false
-    });
-    
-    // Clear inputs
-    document.getElementById("med-name-input").value = "";
-    document.getElementById("med-dose-input").value = "";
-    document.getElementById("med-freq-input").value = "";
-    document.getElementById("med-dur-input").value = "";
-    
-    renderDoctorPrescriptionMeds();
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.classList.remove("active");
   });
 
-  // Doctor: Submit Consultation Form (Phase 2 -> Phase 3 transition)
-  const btnSubmitConsultation = document.getElementById("btn-submit-consultation");
-  if (btnSubmitConsultation) {
-    btnSubmitConsultation.addEventListener("click", async (e) => {
-      e.preventDefault();
-      if (!activeConsultationPatient) return;
-      
-      const symptoms = document.getElementById("doc-symptoms").value.trim();
-      const prevHistory = document.getElementById("doc-prev-history").value.trim();
-      const familyHistory = document.getElementById("doc-family-history").value.trim();
-      const physicalExam = document.getElementById("doc-exam").value.trim();
-      const diagnosis = document.getElementById("doc-diagnosis").value.trim();
-      
-      if (!symptoms) {
-        alert("Please enter patient symptoms / complaints first!");
-        const tab = document.getElementById("nav-doc-complaints");
-        if (tab) tab.click();
-        return;
-      }
-      
-      if (!diagnosis) {
-        alert("Please enter diagnosis notes first!");
-        const tab = document.getElementById("nav-doc-diagnosis");
-        if (tab) tab.click();
-        return;
-      }
-      
-      // Gather ordered reports
-      const reportCheckboxes = document.querySelectorAll("input[name='lab-report']:checked");
-      const orderedReportsList = [];
-      reportCheckboxes.forEach(cb => {
-        orderedReportsList.push({
-          name: cb.value,
-          status: "pending",
-          findings: ""
-        });
-      });
-      
-      // Update Patient Active Visit Object
-      const p = patients.find(pat => pat.id === activeConsultationPatient.id);
-      const cv = getCurrentVisit(p);
-      
-      cv.symptoms = symptoms;
-      cv.prevHistory = prevHistory;
-      cv.familyHistory = familyHistory;
-      cv.physicalExam = physicalExam;
-      cv.diagnosis = diagnosis;
-      cv.medicines = [...currentPrescriptionMeds];
-      cv.reports = orderedReportsList;
-      cv.examDate = getFormattedDateTime();
-      
-      // State machine logic for Phase 3 redirection
-      cv.needsPharmacy = cv.medicines.length > 0;
-      cv.needsRadiology = cv.reports.length > 0;
-      cv.pharmacyDispensed = false;
-      cv.radiologyCompleted = false;
-      
-      p.logs.push(`Doctor completed consultation. Diagnosis: ${diagnosis.slice(0,40)}...`);
-      
-      if (cv.needsPharmacy && cv.needsRadiology) {
-        cv.status = "pending_pharmacy_radiology";
-        p.logs.push("Sent to Pharmacy & Radiology Lab.");
-        await addLog(`Dr. finished consulting ${p.name}. Sent to Pharmacy & Radiology.`, "info");
-      } else if (cv.needsPharmacy) {
-        cv.status = "pending_pharmacy";
-        p.logs.push("Sent to Medical Pharmacy.");
-        await addLog(`Dr. finished consulting ${p.name}. Sent to Pharmacy.`, "info");
-      } else if (cv.needsRadiology) {
-        cv.status = "pending_radiology";
-        p.logs.push("Sent to Radiology Lab.");
-        await addLog(`Dr. finished consulting ${p.name}. Sent to Radiology.`, "info");
-      } else {
-        cv.status = "completed";
-        p.logs.push("Treatment finalized. Discharged.");
-        await addLog(`Dr. finalized patient ${p.name}. Discharged directly.`, "success");
-      }
-      
-      await updatePatientRecord(p);
-      deselectAllViews();
-      renderAllQueues();
-      
-      // Switch back to patient queue tab
-      const queueNav = document.querySelector("#doctor-nav-menu .nav-item[data-view='doc-queue']");
-      if (queueNav) queueNav.click();
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      renderDrugCatalogCards();
     });
   }
 
-  // Phase 3: Pharmacy deselect
-  document.getElementById("btn-close-pharmacy").addEventListener("click", () => {
-    deselectAllViews();
-  });
-
-  // Phase 3: Pharmacy dispense submit
-  document.getElementById("btn-dispense-submit").addEventListener("click", async () => {
-    if (!activePharmacyPatient) return;
-    
-    const checkBoxes = document.querySelectorAll(".pharmacy-med-cb");
-    const p = patients.find(pat => pat.id === activePharmacyPatient.id);
-    const cv = getCurrentVisit(p);
-    
-    let allChecked = true;
-    checkBoxes.forEach((cb, index) => {
-      const isDispensed = cb.checked;
-      cv.medicines[index].dispensed = isDispensed;
-      if (!isDispensed) allChecked = false;
+  catFilterBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      catFilterBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedCatalogCategory = btn.getAttribute("data-cat");
+      renderDrugCatalogCards();
     });
-    
-    if (!allChecked) {
-      if (!confirm("Some medicines are not checked. Dispense selected only?")) {
-        return;
-      }
-    }
-    
-    cv.pharmacyDispensed = true;
-    p.logs.push("Prescribed medicines successfully dispensed by pharmacist.");
-    
-    // Evaluate transition
-    if (cv.needsRadiology && !cv.radiologyCompleted) {
-      cv.status = "pending_radiology";
-      await addLog(`Pharmacy dispensed medicines for ${p.name}. Radiology scan still pending.`, "warning");
-    } else {
-      cv.status = "completed";
-      await addLog(`Pharmacy complete for ${p.name}. Cycle completed successfully.`, "success");
-    }
-    
-    await updatePatientRecord(p);
-    deselectAllViews();
-    renderAllQueues();
-  });
-
-  // Phase 3: Radiology deselect
-  document.getElementById("btn-close-radiology").addEventListener("click", () => {
-    deselectAllViews();
-  });
-
-  // Phase 3: Radiology findings submit
-  const radForm = document.getElementById("radiology-reports-form");
-  radForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!activeRadiologyPatient) return;
-    
-    const p = patients.find(pat => pat.id === activeRadiologyPatient.id);
-    const cv = getCurrentVisit(p);
-    
-    // Read textarea findings
-    cv.reports.forEach((rep, index) => {
-      const findingsTextarea = document.getElementById(`rad-findings-${index}`);
-      rep.findings = findingsTextarea.value.trim() || "No significant abnormalities detected.";
-      rep.status = "completed";
-    });
-    
-    cv.radiologyCompleted = true;
-    p.logs.push("Diagnostic reports generated and signed by Radiologist.");
-    
-    // Evaluate transition
-    if (cv.needsPharmacy && !cv.pharmacyDispensed) {
-      cv.status = "pending_pharmacy";
-      await addLog(`Radiologist submitted reports for ${p.name}. Pharmacy meds still pending.`, "warning");
-    } else {
-      cv.status = "completed";
-      await addLog(`Radiology findings uploaded for ${p.name}. Cycle completed successfully.`, "success");
-    }
-    
-    await updatePatientRecord(p);
-    deselectAllViews();
-    renderAllQueues();
-  });
-
-  // Print Prescription Button in Pharmacy
-  document.getElementById("btn-print-prescription").addEventListener("click", () => {
-    if (!activePharmacyPatient) return;
-    const cv = getCurrentVisit(activePharmacyPatient);
-    triggerPrescriptionPrint(activePharmacyPatient, cv);
-  });
-
-  // Print Visit Details Button in Central Registry
-  document.getElementById("btn-print-registry-prescription").addEventListener("click", () => {
-    const patientId = document.getElementById("reg-patient-id").textContent;
-    const p = patients.find(pat => pat.id === patientId);
-    if (!p) return;
-    
-    const selector = document.getElementById("reg-visit-selector");
-    const visitIndex = parseInt(selector.value);
-    const visit = p.visits[visitIndex];
-    if (!visit) return;
-    
-    triggerPrescriptionPrint(p, visit);
-  });
-
-  // Central Registry Search Input
-  const regSearch = document.getElementById("registry-search-input");
-  regSearch.addEventListener("input", () => {
-    renderRegistryTable();
-  });
-
-  // Central Registry Detail Card Close
-  document.getElementById("btn-close-registry-detail").addEventListener("click", () => {
-    document.getElementById("registry-detail-card").classList.remove("active");
   });
 }
 
-// Reception returning-patient search setup
-function setupReceptionSearch() {
-  const recSearch = document.getElementById("reception-search-input");
-  const recSearchResults = document.getElementById("reception-search-results");
-  const matchAlert = document.getElementById("reception-match-alert");
-  const matchDisplay = document.getElementById("matched-patient-display");
-  const btnCancelMatch = document.getElementById("btn-cancel-match");
-
-  recSearch.addEventListener("input", (e) => {
-    const query = e.target.value.toLowerCase().trim();
-    if (query === "") {
-      recSearchResults.style.display = "none";
-      recSearchResults.innerHTML = "";
-      return;
-    }
-
-    const filtered = patients.filter(p => 
-      p.name.toLowerCase().includes(query) || 
-      p.id.toLowerCase().includes(query) || 
-      p.phone.includes(query)
-    );
-
-    recSearchResults.innerHTML = "";
-    recSearchResults.style.display = "flex";
-
-    if (filtered.length === 0) {
-      recSearchResults.innerHTML = `<div class="no-data" style="padding:1rem;">No matching registered patients.</div>`;
-      return;
-    }
-
-    filtered.forEach(p => {
-      const card = document.createElement("div");
-      card.className = "patient-card";
-      card.style.padding = "0.75rem 1rem";
-      card.style.borderColor = "rgba(6, 182, 212, 0.2)";
-      card.innerHTML = `
-        <div class="patient-info">
-          <div class="patient-header">
-            <span class="patient-name">${p.name}</span>
-            <span class="patient-id">${p.id}</span>
-          </div>
-          <div class="patient-meta">${p.gender}, ${p.age} years | Phone: ${maskPhone(p.phone)}</div>
-        </div>
-        <button type="button" class="btn btn-primary btn-sm btn-match-select" data-id="${p.id}">Match & Fill</button>
-      `;
-      recSearchResults.appendChild(card);
-    });
-
-    document.querySelectorAll(".btn-match-select").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-id");
-        const p = patients.find(pat => pat.id === id);
-        if (p) {
-          matchedPatientForIntake = p;
-          
-          // Pre-fill fields
-          document.getElementById("p-name").value = p.name;
-          document.getElementById("p-age").value = p.age;
-          document.getElementById("p-gender").value = p.gender;
-          document.getElementById("p-phone").value = p.phone;
-          document.getElementById("p-blood").value = p.bloodGroup;
-          
-          // Show alert banner
-          matchDisplay.textContent = `${p.name} (${p.id})`;
-          matchAlert.style.display = "flex";
-          
-          // Clear and collapse search
-          recSearch.value = "";
-          recSearchResults.style.display = "none";
-          
-          addLog(`Selected and loaded returning patient ${p.name} record.`, "info");
-        }
-      });
-    });
-  });
-
-  btnCancelMatch.addEventListener("click", () => {
-    matchedPatientForIntake = null;
-    matchAlert.style.display = "none";
-    document.getElementById("reception-intake-form").reset();
-    addLog("Patient matching cleared.", "info");
-  });
-}
-
-// Global Log System
-async function addLog(text, type = "info") {
-  const time = new Date().toLocaleTimeString();
-  const logItem = { text, type, time };
-  logs.unshift(logItem); // Insert at beginning
-  
-  if (logs.length > 50) {
-    logs.pop();
-  }
-  
-  saveDatabase();
-  renderActivityLog();
-  
-  try {
-    await fetch('/api/logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, type })
-    });
-  } catch (err) {
-    console.warn("Failed to sync log with server:", err);
-  }
-}
-
-function renderActivityLog() {
-  const container = document.getElementById("activity-scroll-area");
+function renderDrugCatalogCards() {
+  const container = document.getElementById("drug-catalog-cards-container");
+  const searchInput = document.getElementById("modal-drug-search-input");
   if (!container) return;
-  container.innerHTML = "";
-  
-  if (logs.length === 0) {
-    container.innerHTML = `<div style="color:var(--text-muted); font-style:italic;">No recent activity.</div>`;
-    return;
-  }
-  
-  logs.forEach(log => {
-    let markerClass = "marker-info";
-    if (log.type === "success") markerClass = "marker-success";
-    if (log.type === "warning") markerClass = "marker-warning";
-    if (log.type === "danger") markerClass = "marker-danger";
-    
-    const div = document.createElement("div");
-    div.className = "activity-item";
-    div.innerHTML = `
-      <span class="activity-marker ${markerClass}"></span>
-      <div style="flex-grow:1;">
-        <p style="color:var(--text-primary); margin-bottom: 0.1rem;">${log.text}</p>
-        <span class="activity-time">${log.time}</span>
-      </div>
-    `;
-    container.appendChild(div);
-  });
-}
 
-// Helper to check for high/abnormal vitals
-function getVitalAlertClass(type, val) {
-  if (type === "temp") {
-    return val > 99.5 || val < 96.0 ? "border-color: var(--color-danger); box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);" : "";
-  }
-  if (type === "pulse") {
-    return val > 100 || val < 60 ? "border-color: var(--color-warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);" : "";
-  }
-  if (type === "bp") {
-    const sys = parseInt(val.split("/")[0]);
-    const dia = parseInt(val.split("/")[1]);
-    return sys > 135 || dia > 88 || sys < 90 || dia < 55 ? "border-color: var(--color-brand); box-shadow: 0 0 10px rgba(79, 70, 229, 0.15);" : "";
-  }
-  return "";
-}
-
-// Queue Rendering for all departments
-function renderAllQueues() {
-  renderReceptionQueue();
-  renderDoctorQueue();
-  renderPharmacyQueue();
-  renderRadiologyQueue();
-  renderBillingQueue();
-  updateDashboardStats();
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : "";
   
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
-}
-
-// 1. Reception Desk Queue
-function renderReceptionQueue() {
-  const container = document.getElementById("reception-queue");
-  container.innerHTML = "";
-  
-  const activeWaiting = patients.filter(p => getCurrentVisit(p).status === "WAITING_FOR_DOCTOR");
-  
-  if (activeWaiting.length === 0) {
-    container.innerHTML = `<div class="no-data">Queue is currently empty.</div>`;
-    return;
-  }
-  
-  activeWaiting.forEach(p => {
-    const cv = getCurrentVisit(p);
-    const card = document.createElement("div");
-    card.className = "patient-card";
-    card.innerHTML = `
-      <div class="patient-info">
-        <div class="patient-header">
-          <span class="patient-name">${p.name}</span>
-          <span class="patient-id">${p.id}</span>
-        </div>
-        <div class="patient-meta">${p.gender}, ${p.age}y | BP: ${cv.vitals.bp}</div>
-      </div>
-      <div class="patient-actions">
-        <span class="badge badge-waiting">Waiting</span>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-// 2. Doctor Consultation Queue
-function renderDoctorQueue() {
-  const container = document.getElementById("doctor-queue");
-  container.innerHTML = "";
-  
-  const doctorWaiting = patients.filter(p => {
-    const cv = getCurrentVisit(p);
-    return cv && cv.status === "WAITING_FOR_DOCTOR" && cv.consultationPaid === true;
-  });
-  
-  if (doctorWaiting.length === 0) {
-    container.innerHTML = `<div class="no-data">No patients waiting.</div>`;
-    return;
-  }
-  
-  doctorWaiting.forEach(p => {
-    const cv = getCurrentVisit(p);
-    const card = document.createElement("div");
-    card.className = "patient-card";
-    
-    if (activeConsultationPatient && activeConsultationPatient.id === p.id) {
-      card.style.borderColor = "var(--color-brand)";
-      card.style.backgroundColor = "rgba(79, 70, 229, 0.05)";
-    }
-    
-    card.innerHTML = `
-      <div class="patient-info">
-        <div class="patient-header">
-          <span class="patient-name">${p.name}</span>
-          <span class="patient-id">${p.id}</span>
-        </div>
-        <div class="patient-meta">BP: ${cv.vitals.bp} | Pulse: ${cv.vitals.pulse} bpm</div>
-      </div>
-      <div class="patient-actions">
-        <button class="btn btn-primary btn-sm btn-doctor-select" data-id="${p.id}">Examine</button>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-  
-  document.querySelectorAll(".btn-doctor-select").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      selectPatientForConsultation(id);
-    });
-  });
-}
-
-function selectPatientForConsultation(id) {
-  const p = patients.find(pat => pat.id === id);
-  if (!p) return;
-  
-  activeConsultationPatient = p;
-  currentPrescriptionMeds = [];
-  const cv = getCurrentVisit(p);
-  
-  // Update active patient banners across all panels
-  updateActivePatientBanners(p);
-
-  // Enable all consultation tabs on doctor menu
-  document.querySelectorAll("#doctor-nav-menu .nav-item[data-view^='doc-']").forEach(item => {
-    item.classList.remove("disabled-nav");
-  });
-
-  // Load vitals into complaints panel
-  const tCard = document.getElementById("doc-vital-temp");
-  if (tCard) {
-    tCard.textContent = `${cv.vitals.temp} °F`;
-    tCard.parentElement.setAttribute("style", getVitalAlertClass("temp", cv.vitals.temp));
-  }
-  const wCard = document.getElementById("doc-vital-weight");
-  if (wCard) {
-    wCard.textContent = `${cv.vitals.weight} kg`;
-  }
-  const bpCard = document.getElementById("doc-vital-bp");
-  if (bpCard) {
-    bpCard.textContent = cv.vitals.bp;
-    bpCard.parentElement.setAttribute("style", getVitalAlertClass("bp", cv.vitals.bp));
-  }
-  const pCard = document.getElementById("doc-vital-pulse");
-  if (pCard) {
-    pCard.textContent = `${cv.vitals.pulse} bpm`;
-    pCard.parentElement.setAttribute("style", getVitalAlertClass("pulse", cv.vitals.pulse));
-  }
-  
-  // Load input notes
-  const symptomsInput = document.getElementById("doc-symptoms");
-  if (symptomsInput) symptomsInput.value = cv.symptoms || "";
-  const prevHistoryInput = document.getElementById("doc-prev-history");
-  if (prevHistoryInput) prevHistoryInput.value = cv.prevHistory || "";
-  const familyHistoryInput = document.getElementById("doc-family-history");
-  if (familyHistoryInput) familyHistoryInput.value = cv.familyHistory || "";
-  const examInput = document.getElementById("doc-exam");
-  if (examInput) examInput.value = cv.physicalExam || "";
-  const diagnosisInput = document.getElementById("doc-diagnosis");
-  if (diagnosisInput) diagnosisInput.value = cv.diagnosis || "";
-  
-  // Reset medicine inputs
-  const medName = document.getElementById("med-name-input");
-  if (medName) medName.value = "";
-  const medDose = document.getElementById("med-dose-input");
-  if (medDose) medDose.value = "";
-  const medFreq = document.getElementById("med-freq-input");
-  if (medFreq) medFreq.value = "";
-  const medDur = document.getElementById("med-dur-input");
-  if (medDur) medDur.value = "";
-
-  // Reset check list
-  document.querySelectorAll("input[name='lab-report']").forEach(cb => {
-    cb.checked = false;
-  });
-
-  renderDoctorPrescriptionMeds();
-  renderDoctorQueue();
-
-  // Switch to complaints tab automatically to begin consultation
-  const complaintsNav = document.getElementById("nav-doc-complaints");
-  if (complaintsNav) {
-    complaintsNav.click();
-  }
-}
-
-function updateActivePatientBanners(p) {
-  const banners = document.querySelectorAll(".active-patient-banner");
-  if (banners.length === 0) return;
-
-  if (!p) {
-    banners.forEach(b => {
-      b.style.display = "none";
-      b.innerHTML = "";
-    });
-    return;
-  }
-
-  const bannerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; width: 100%;">
-      <div>
-        <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-cyan); font-weight: 700; letter-spacing: 0.5px;">Active Consultation Patient</span>
-        <h3 style="margin: 0.1rem 0; font-family: var(--font-display); font-size: 1.3rem; color: #fff;">${p.name}</h3>
-        <div style="display: flex; gap: 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
-          <span>ID: ${p.id}</span>
-          <span>|</span>
-          <span>${p.gender}, ${p.age} Years</span>
-          <span>|</span>
-          <span>Blood Group: ${p.bloodGroup || 'N/A'}</span>
-          <span>|</span>
-          <span>Contact: ${maskPhone(p.phone)}</span>
-        </div>
-      </div>
-      <div style="display: flex; gap: 0.75rem; align-items: center;">
-        <button type="button" class="btn btn-secondary btn-sm btn-show-past-history" style="background: rgba(6, 182, 212, 0.1); border-color: rgba(6, 182, 212, 0.25); color: #fff;"><i data-lucide="history" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle;"></i> Review Past Visits</button>
-        <button type="button" class="btn btn-danger btn-sm btn-deselect-patient" style="padding: 0.4rem 0.75rem;"><i data-lucide="x" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle;"></i> Deselect</button>
-      </div>
-    </div>
-  `;
-
-  banners.forEach(b => {
-    b.style.display = "block";
-    b.innerHTML = bannerHTML;
-  });
-
-  // Attach button click events inside banner
-  document.querySelectorAll(".btn-show-past-history").forEach(btn => {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      openPastVisitsModal(p);
-    };
-  });
-
-  document.querySelectorAll(".btn-deselect-patient").forEach(btn => {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      deselectAllViews();
-      // Switch back to patient queue
-      const queueNav = document.querySelector("#doctor-nav-menu .nav-item[data-view='doc-queue']");
-      if (queueNav) queueNav.click();
-    };
-  });
-
-  // Render icons
-  lucide.createIcons();
-}
-
-function openPastVisitsModal(p) {
-  const modal = document.getElementById("past-visits-modal");
-  const container = document.getElementById("past-visits-modal-content");
-  if (!modal || !container) return;
-
-  modal.style.display = "flex";
-  container.innerHTML = "";
-
-  // All visits except the current one (which is the last one in p.visits)
-  const pastVisits = p.visits.slice(0, -1);
-
-  if (pastVisits.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-        <i data-lucide="info" style="width: 32px; height: 32px; margin-bottom: 0.5rem; color: var(--text-muted);"></i>
-        <p>No previous visit records found for this patient.</p>
-      </div>
-    `;
-    lucide.createIcons();
-    return;
-  }
-
-  // Display from newest to oldest
-  [...pastVisits].reverse().forEach((visit) => {
-    const card = document.createElement("div");
-    card.style.background = "rgba(255, 255, 255, 0.02)";
-    card.style.border = "1px solid rgba(255, 255, 255, 0.08)";
-    card.style.borderRadius = "var(--radius-md)";
-    card.style.padding = "1rem";
-    card.style.display = "flex";
-    card.style.flexDirection = "column";
-    card.style.gap = "0.5rem";
-
-    const medsText = visit.medicines && visit.medicines.length > 0 
-      ? visit.medicines.map(m => `${m.name} (${m.dose} - ${m.frequency})`).join(", ")
-      : "None prescribed";
-
-    const reportsText = visit.reports && visit.reports.length > 0
-      ? visit.reports.map(r => `${r.name} (${r.status || 'Ordered'})`).join(", ")
-      : "None ordered";
-
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 0.5rem; margin-bottom: 0.25rem;">
-        <span style="font-weight: 700; color: var(--color-cyan); font-size: 0.85rem;">Date: ${visit.date}</span>
-        <span style="font-size: 0.75rem; background: rgba(6, 182, 212, 0.15); color: var(--color-cyan); padding: 0.1rem 0.4rem; border-radius: 4px;">Visit Record</span>
-      </div>
-      <div style="font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-        <div><strong>Vitals:</strong> T: ${visit.vitals ? (visit.vitals.temp || '-') : '-'}°F | BP: ${visit.vitals ? (visit.vitals.bp || '-') : '-'} | P: ${visit.vitals ? (visit.vitals.pulse || '-') : '-'}bpm</div>
-        <div><strong>Complaints:</strong> ${visit.symptoms || 'None'}</div>
-        <div><strong>Past Medical History:</strong> ${visit.prevHistory || 'None'}</div>
-        <div><strong>Family History:</strong> ${visit.familyHistory || 'None'}</div>
-        <div><strong>Chest Exam:</strong> ${visit.physicalExam || 'None'}</div>
-        <div><strong>Diagnosis:</strong> ${visit.diagnosis || 'None'}</div>
-      </div>
-      <div style="font-size: 0.8rem; margin-top: 0.25rem; border-top: 1px dashed rgba(255,255,255,0.04); padding-top: 0.5rem;">
-        <div><strong>Medicines:</strong> <span style="color: var(--color-brand);">${medsText}</span></div>
-        <div><strong>Radiology Reports:</strong> <span style="color: var(--color-danger);">${reportsText}</span></div>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-  lucide.createIcons();
-}
-
-function renderDoctorPastVisits(p) {
-  const section = document.getElementById("doc-past-visits-section");
-  const countSpan = document.getElementById("doc-past-visits-count");
-  const listContainer = document.getElementById("doc-past-visits-list");
-  
-  // Slice out the current active visit (which is the last one)
-  const pastVisits = p.visits.slice(0, -1);
-  
-  if (pastVisits.length === 0) {
-    section.style.display = "none";
-    return;
-  }
-  
-  section.style.display = "block";
-  countSpan.textContent = pastVisits.length;
-  listContainer.innerHTML = "";
-  
-  // Display from newest to oldest
-  [...pastVisits].reverse().forEach((visit, index) => {
-    const visitCard = document.createElement("div");
-    visitCard.className = "visit-record-card";
-    visitCard.style.background = "rgba(255,255,255,0.02)";
-    visitCard.style.border = "1px solid var(--glass-border)";
-    visitCard.style.borderRadius = "var(--radius-sm)";
-    visitCard.style.padding = "0.75rem";
-    visitCard.style.marginBottom = "0.5rem";
-    
-    const medsText = visit.medicines.length > 0 
-      ? visit.medicines.map(m => `${m.name} (${m.dose})`).join(", ")
-      : "None prescribed";
-      
-    const reportsText = visit.reports.length > 0
-      ? visit.reports.map(r => `${r.name}: ${r.findings || 'Pending'}`).join("; ")
-      : "None ordered";
-
-    visitCard.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" class="visit-record-header">
-        <span style="font-weight:600; color:var(--color-cyan); font-size:0.85rem;"><i data-lucide="calendar" style="width:12px; height:12px; vertical-align:middle; margin-right:4px;"></i>${visit.date}</span>
-        <span style="font-size:0.8rem; color:#fff; font-weight: 500;">Diag: <span style="color: var(--color-warning);">${visit.diagnosis || 'N/A'}</span></span>
-      </div>
-      <div class="visit-record-body" style="margin-top:0.6rem; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.5rem; font-size:0.8rem; display:none; flex-direction:column; gap:0.45rem;">
-        <div><strong style="color:var(--text-secondary);">Vitals:</strong> Temp: ${visit.vitals.temp}°F | BP: ${visit.vitals.bp} | Pulse: ${visit.vitals.pulse} bpm | Weight: ${visit.vitals.weight} kg</div>
-        <div><strong style="color:var(--text-secondary);">Complaints:</strong> ${visit.symptoms || 'None recorded'}</div>
-        <div><strong style="color:var(--text-secondary);">Past History:</strong> ${visit.prevHistory || 'None recorded'}</div>
-        <div><strong style="color:var(--text-secondary);">Diagnosis Notes:</strong> ${visit.diagnosis || 'None'}</div>
-        <div><strong style="color:var(--text-secondary);">Prescribed:</strong> ${medsText}</div>
-        <div><strong style="color:var(--text-secondary);">Scan Findings:</strong> ${reportsText}</div>
-      </div>
-    `;
-    
-    listContainer.appendChild(visitCard);
-    
-    const header = visitCard.querySelector(".visit-record-header");
-    const body = visitCard.querySelector(".visit-record-body");
-    header.addEventListener("click", () => {
-      if (body.style.display === "none") {
-        body.style.display = "flex";
-      } else {
-        body.style.display = "none";
-      }
-    });
-  });
-
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
-}
-
-function renderDoctorPrescriptionMeds() {
-  const container = document.getElementById("doctor-meds-list");
-  container.innerHTML = "";
-  
-  if (currentPrescriptionMeds.length === 0) {
-    container.innerHTML = `<p class="no-data" style="padding: 1.5rem; font-size: 0.85rem;">No medicines added to prescription yet.</p>`;
-    return;
-  }
-  
-  currentPrescriptionMeds.forEach((med, index) => {
-    const div = document.createElement("div");
-    div.className = "med-item";
-    div.innerHTML = `
-      <div class="med-details">
-        <span class="med-name">${med.name}</span> <span style="color:var(--color-cyan); font-size:0.75rem; font-weight:600;">(${med.dose})</span>
-        <div class="med-schedule">${med.freq} | Duration: ${med.dur}</div>
-      </div>
-      <button type="button" class="btn btn-danger btn-sm" style="padding: 0.2rem 0.4rem;" onclick="removePrescriptionMed(${index})">
-        <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
-      </button>
-    `;
-    container.appendChild(div);
-  });
-  
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
-}
-
-window.removePrescriptionMed = function(index) {
-  currentPrescriptionMeds.splice(index, 1);
-  renderDoctorPrescriptionMeds();
-};
-
-// 3. Pharmacy Queue
-function renderPharmacyQueue() {
-  const container = document.getElementById("pharmacy-queue");
-  container.innerHTML = "";
-  
-  const pharmacyPatients = patients.filter(p => {
-    const cv = getCurrentVisit(p);
-    return cv.needsPharmacy && !cv.pharmacyDispensed && cv.status !== "WAITING_FOR_DOCTOR";
-  });
-  
-  if (pharmacyPatients.length === 0) {
-    container.innerHTML = `<div class="no-data">No pharmacy orders.</div>`;
-    return;
-  }
-  
-  pharmacyPatients.forEach(p => {
-    const cv = getCurrentVisit(p);
-    const card = document.createElement("div");
-    card.className = "patient-card";
-    
-    if (activePharmacyPatient && activePharmacyPatient.id === p.id) {
-      card.style.borderColor = "var(--color-cyan)";
-      card.style.backgroundColor = "rgba(6, 182, 212, 0.05)";
-    }
-    
-    card.innerHTML = `
-      <div class="patient-info">
-        <div class="patient-header">
-          <span class="patient-name">${p.name}</span>
-          <span class="patient-id">${p.id}</span>
-        </div>
-        <div class="patient-meta">Meds ordered: ${cv.medicines.length} items</div>
-      </div>
-      <div class="patient-actions">
-        <button class="btn btn-secondary btn-sm btn-pharmacy-select" data-id="${p.id}" style="border-color:var(--color-cyan); color:#e0f7fa;">Dispense</button>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-  
-  document.querySelectorAll(".btn-pharmacy-select").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      selectPatientForPharmacy(id);
-    });
-  });
-}
-
-function selectPatientForPharmacy(id) {
-  const p = patients.find(pat => pat.id === id);
-  if (!p) return;
-  
-  activePharmacyPatient = p;
-  const cv = getCurrentVisit(p);
-  
-  document.getElementById("pharmacy-placeholder-card").style.display = "none";
-  const dispenseCard = document.getElementById("pharmacy-dispense-card");
-  dispenseCard.style.display = "block";
-  
-  document.getElementById("ph-patient-name").textContent = p.name;
-  document.getElementById("ph-patient-id").textContent = p.id;
-  document.getElementById("ph-patient-meta").textContent = `Prescribed by Doctor | ${p.gender}, ${p.age} years`;
-  
-  // Build meds checklist
-  const checklist = document.getElementById("pharmacy-meds-checklist");
-  checklist.innerHTML = "";
-  
-  cv.medicines.forEach((med, index) => {
-    const label = document.createElement("label");
-    label.className = "checkbox-container";
-    label.style.background = "rgba(255,255,255,0.01)";
-    label.style.padding = "0.75rem 1rem";
-    label.style.border = "1px solid var(--glass-border)";
-    label.style.borderRadius = "var(--radius-sm)";
-    label.style.display = "flex";
-    label.style.alignItems = "center";
-    label.style.justifyContent = "space-between";
-    label.style.width = "100%";
-    
-    label.innerHTML = `
-      <div style="display:flex; align-items:center; gap: 0.75rem; flex: 1;">
-        <input type="checkbox" class="pharmacy-med-cb" ${med.dispensed ? 'checked' : ''}>
-        <span class="checkmark"></span>
-        <div>
-          <strong style="color:#fff; font-size:0.95rem;">${med.name}</strong> - <span>${med.dose}</span>
-          <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.15rem;">Schedule: ${med.freq} | Duration: ${med.dur}</div>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:0.75rem;">
-        <span style="font-size:0.8rem; color:var(--text-secondary);">Price (₹):</span>
-        <input type="number" class="pharmacy-med-price" value="${med.price !== undefined ? med.price : ''}" placeholder="0.00" min="0" style="width: 80px; background: rgba(15,23,42,0.6); color:#fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 0.25rem; font-size: 0.85rem; text-align: right;">
-      </div>
-    `;
-    checklist.appendChild(label);
-  });
-
-  // Set billing status badge & dispense button disabled/enabled state
-  const phBillingStatus = document.getElementById("ph-billing-status");
-  const phBillingNotes = document.getElementById("ph-billing-notes");
-  const btnDispenseSubmit = document.getElementById("btn-dispense-submit");
-  
-  const medsPaid = !!cv.medicinesBillPaid;
-  if (medsPaid) {
-    phBillingStatus.className = "badge badge-success";
-    phBillingStatus.textContent = "Paid";
-    phBillingNotes.textContent = "Payment confirmed. You may dispense medications.";
-    btnDispenseSubmit.removeAttribute("disabled");
-  } else {
-    phBillingStatus.className = "badge badge-waiting";
-    phBillingStatus.textContent = "Unpaid";
-    phBillingNotes.textContent = "Meds must be paid at reception desk before dispensing.";
-    btnDispenseSubmit.setAttribute("disabled", "true");
-  }
-  
-  renderPharmacyQueue();
-}
-
-// 4. Radiology Queue
-function renderRadiologyQueue() {
-  const container = document.getElementById("radiology-queue");
-  container.innerHTML = "";
-  
-  const radiologyPatients = patients.filter(p => {
-    const cv = getCurrentVisit(p);
-    return cv.needsRadiology && !cv.radiologyCompleted && cv.status !== "WAITING_FOR_DOCTOR";
-  });
-  
-  if (radiologyPatients.length === 0) {
-    container.innerHTML = `<div class="no-data">No radiology scans.</div>`;
-    return;
-  }
-  
-  radiologyPatients.forEach(p => {
-    const cv = getCurrentVisit(p);
-    const card = document.createElement("div");
-    card.className = "patient-card";
-    
-    if (activeRadiologyPatient && activeRadiologyPatient.id === p.id) {
-      card.style.borderColor = "var(--color-danger)";
-      card.style.backgroundColor = "rgba(239, 68, 68, 0.05)";
-    }
-    
-    card.innerHTML = `
-      <div class="patient-info">
-        <div class="patient-header">
-          <span class="patient-name">${p.name}</span>
-          <span class="patient-id">${p.id}</span>
-        </div>
-        <div class="patient-meta">Scans ordered: ${cv.reports.length} reports</div>
-      </div>
-      <div class="patient-actions">
-        <button class="btn btn-secondary btn-sm btn-radiology-select" data-id="${p.id}" style="border-color:var(--color-danger); color:#ffebee;">Upload scan</button>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-  
-  document.querySelectorAll(".btn-radiology-select").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      selectPatientForRadiology(id);
-    });
-  });
-}
-
-function selectPatientForRadiology(id) {
-  const p = patients.find(pat => pat.id === id);
-  if (!p) return;
-  
-  activeRadiologyPatient = p;
-  const cv = getCurrentVisit(p);
-  
-  document.getElementById("radiology-placeholder-card").style.display = "none";
-  const reportCard = document.getElementById("radiology-report-card");
-  reportCard.style.display = "block";
-  
-  document.getElementById("rad-patient-name").textContent = p.name;
-  document.getElementById("rad-patient-id").textContent = p.id;
-  document.getElementById("rad-patient-meta").textContent = `Ordered by Doctor | ${p.gender}, ${p.age} years`;
-  
-  // Build report inputs
-  const inputsContainer = document.getElementById("radiology-inputs-container");
-  inputsContainer.innerHTML = "";
-  
-  cv.reports.forEach((rep, index) => {
-    const itemDiv = document.createElement("div");
-    itemDiv.className = "form-group";
-    itemDiv.style.background = "rgba(255, 255, 255, 0.01)";
-    itemDiv.style.border = "1px solid var(--glass-border)";
-    itemDiv.style.borderRadius = "var(--radius-md)";
-    itemDiv.style.padding = "1rem";
-    
-    itemDiv.innerHTML = `
-      <label for="rad-findings-${index}" style="font-weight:600; color:#fff; font-size:0.95rem; margin-bottom:0.5rem; display:block;">
-        <i data-lucide="file-digit" style="width:14px; color:var(--color-danger); vertical-align:middle; margin-right:4px;"></i> Ordered Scan: ${rep.name}
-      </label>
-      <textarea id="rad-findings-${index}" rows="2" placeholder="Write clinical diagnostic findings for ${rep.name} here..." required>${rep.findings || ""}</textarea>
-    `;
-    inputsContainer.appendChild(itemDiv);
-  });
-  
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
-  
-  renderRadiologyQueue();
-}
-
-// 5. Central Patient Registry Rendering
-function renderRegistryTable() {
-  const tbody = document.getElementById("registry-table-body");
-  const query = document.getElementById("registry-search-input").value.toLowerCase().trim();
-  
-  tbody.innerHTML = "";
-  
-  let filtered = patients;
-  if (query !== "") {
-    filtered = patients.filter(p => 
-      p.name.toLowerCase().includes(query) || 
-      p.id.toLowerCase().includes(query) || 
-      p.phone.includes(query)
+  const filtered = masterMedicines.filter(m => {
+    const matchesCat = selectedCatalogCategory === "ALL" || (m.category && m.category.toLowerCase().includes(selectedCatalogCategory.toLowerCase()));
+    if (!matchesCat) return false;
+    if (!query) return true;
+    return (
+      m.name.toLowerCase().includes(query) ||
+      m.genericName.toLowerCase().includes(query) ||
+      m.composition.toLowerCase().includes(query) ||
+      (m.alternativeBrands && m.alternativeBrands.some(b => b.toLowerCase().includes(query)))
     );
-  }
-  
+  });
+
+  container.innerHTML = "";
   if (filtered.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="no-data" style="text-align:center; padding: 2rem;">No matching patient records found in registry database.</td>
-      </tr>
-    `;
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:3rem; color:var(--text-secondary);">No pharmaceutical items match your search filter.</div>`;
     return;
   }
-  
-  sorted.forEach(p => {
-    const cv = getCurrentVisit(p);
-    const tr = document.createElement("tr");
-    tr.style.borderBottom = "1px solid var(--glass-border)";
-    tr.style.color = "var(--text-secondary)";
-    
-    tr.innerHTML = `
-      <td style="padding: 1rem; font-family: monospace; font-weight:600; color:var(--color-cyan);">${p.id}</td>
-      <td style="padding: 1rem; font-weight:600; color:#fff;">${p.name}</td>
-      <td style="padding: 1rem;">${p.age}y / ${p.gender}</td>
-      <td style="padding: 1rem;">${maskPhone(p.phone)}</td>
-      <td style="padding: 1rem; font-size: 0.8rem;">
-        Temp: ${cv.vitals.temp}°F | BP: ${cv.vitals.bp}
-      </td>
-      <td style="padding: 1rem;">${getStatusBadge(p)}</td>
-      <td style="padding: 1rem; text-align: right;">
-        <button class="btn btn-secondary btn-sm btn-view-history" data-id="${p.id}"><i data-lucide="eye" style="width:12px; height:12px;"></i> View EHR</button>
-        <button class="btn btn-danger btn-sm btn-delete-patient" data-id="${p.id}" style="margin-left: 0.5rem;"><i data-lucide="trash-2" style="width:12px; height:12px;"></i> Delete</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-  
-  document.querySelectorAll(".btn-view-history").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      openRegistryDetail(id);
-    });
-  });
 
-  document.querySelectorAll(".btn-delete-patient").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const id = btn.getAttribute("data-id");
-      if (confirm(`Are you sure you want to delete patient '${id}'? This action cannot be undone.`)) {
-        try {
-          const deleteRes = await fetch(`/api/patients/${id}`, {
-            method: "DELETE"
-          });
-          const data = await deleteRes.json();
-          if (!deleteRes.ok) {
-            throw new Error(data.error || "Failed to delete patient");
-          }
-          alert(`Patient '${id}' removed successfully.`);
-          
-          // Remove from local patients array
-          patients = patients.filter(pat => pat.id !== id);
-          
-          // Re-render and update UI
-          renderRegistryTable();
-          renderAllQueues();
-          updateDashboardStats();
-        } catch (err) {
-          alert(`Error: ${err.message}`);
-        }
+  filtered.forEach(med => {
+    const card = document.createElement("div");
+    card.className = "drug-catalog-card";
+    
+    let altHtml = "";
+    if (med.alternativeBrands && med.alternativeBrands.length > 0) {
+      altHtml = `
+        <div class="drug-card-alternatives">
+          <strong style="color:var(--primary-purple-dark); font-size:0.75rem;">Alternative Brands & Market Prices:</strong>
+          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+            ${med.alternativeBrands.map(b => `<span class="badge" style="background:#fff; border:1px solid #cbd5e1; font-size:0.7rem; color:var(--text-main); font-weight:600;">${b}</span>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div>
+        <div class="drug-card-top">
+          <div>
+            <div class="drug-card-title">${med.name}</div>
+            <span class="badge badge-purple" style="font-size:0.68rem; margin-top:2px;">${med.category}</span>
+          </div>
+          <div class="drug-card-price">₹${med.price}</div>
+        </div>
+
+        <div class="drug-card-molecule" style="margin-top:0.5rem;">
+          <div><strong>Active Molecule:</strong> ${med.genericName}</div>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">${med.composition}</div>
+          <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;"><strong>Std Dosage:</strong> ${med.defaultDose} | ${med.defaultFreq} (${med.defaultDur})</div>
+        </div>
+      </div>
+
+      ${altHtml}
+
+      <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+        <button type="button" class="btn btn-primary btn-sm btn-quick-add-drug" style="flex:1; font-size:0.78rem;">
+          <i data-lucide="plus" style="width:12px; height:12px;"></i> Add to Cart / Rx
+        </button>
+      </div>
+    `;
+
+    card.querySelector(".btn-quick-add-drug").addEventListener("click", () => {
+      if (activeDocPatient) {
+        currentDocMeds.push({
+          name: med.name,
+          dose: med.defaultDose || "500mg",
+          freq: med.defaultFreq || "1-0-1",
+          dur: med.defaultDur || "5 Days",
+          price: med.price || 0,
+          dispensed: false
+        });
+        renderDocMedsRows();
+        alert(`✓ Added ${med.name} to Dr. Consultation Prescription.`);
+      } else if (activePharmaPatient) {
+        const cv = getCurrentVisit(activePharmaPatient);
+        cv.medicines.push({
+          name: med.name,
+          dose: med.defaultDose || "500mg",
+          freq: med.defaultFreq || "1-0-1",
+          dur: med.defaultDur || "5 Days",
+          price: med.price || 50,
+          dispensed: false
+        });
+        selectPatientForPharmacy(activePharmaPatient.id);
+        alert(`✓ Added ${med.name} to Pharmacy POS Bill (₹${med.price}).`);
+      } else {
+        alert(`ℹ ${med.name} (₹${med.price}) selected.\nActive Molecule: ${med.genericName}\nTo add to a live bill, open a patient in Doctor or Pharmacy desk.`);
       }
     });
+
+    container.appendChild(card);
   });
-  
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
+
+  refreshIcons();
 }
 
-// Generate styled badges based on internal state
-function getStatusBadge(p) {
-  const cv = getCurrentVisit(p);
-  if (cv.status === "WAITING_FOR_DOCTOR") {
-    return `<span class="badge badge-waiting">Reception Check-in</span>`;
-  }
-  if (cv.status === "pending_pharmacy_radiology") {
-    return `<span class="badge badge-pharmacy" style="margin-right:2px;">Meds</span><span class="badge badge-radiology">Scans</span>`;
-  }
-  if (cv.status === "pending_pharmacy") {
-    return `<span class="badge badge-pharmacy">Meds Dispense</span>`;
-  }
-  if (cv.status === "pending_radiology") {
-    return `<span class="badge badge-radiology">Diagnostic Labs</span>`;
-  }
-  if (cv.status === "completed") {
-    return `<span class="badge badge-completed">Discharged</span>`;
-  }
-  return `<span class="badge">${cv.status}</span>`;
-}
+function setupSmartDrugAutocomplete() {
+  const docSearchInput = document.getElementById("doc-quick-drug-search");
+  const docDropdown = document.getElementById("doc-drug-suggestions-dropdown");
 
-function openRegistryDetail(id) {
-  const p = patients.find(pat => pat.id === id);
-  if (!p) return;
-  
-  const detailCard = document.getElementById("registry-detail-card");
-  detailCard.classList.add("active");
-  
-  detailCard.scrollIntoView({ behavior: "smooth", block: "start" });
-  
-  document.getElementById("reg-patient-name").textContent = p.name;
-  document.getElementById("reg-patient-id").textContent = p.id;
-  document.getElementById("reg-patient-meta").textContent = `${p.gender}, ${p.age} Years | Blood Group: ${p.bloodGroup}`;
-  document.getElementById("reg-phone").textContent = maskPhone(p.phone);
-  
-  // Populate Visit Selector dropdown
-  const selector = document.getElementById("reg-visit-selector");
-  selector.innerHTML = "";
-  
-  p.visits.forEach((v, index) => {
-    const opt = document.createElement("option");
-    opt.value = index;
-    const statusText = v.status === "completed" ? "Discharged" : "Active";
-    opt.textContent = `Visit ${index + 1}: ${v.date.split(' ')[0]} (${statusText})`;
-    selector.appendChild(opt);
-  });
-  
-  // Default load latest visit details
-  const latestVisitIndex = p.visits.length - 1;
-  selector.value = latestVisitIndex;
-  loadRegistryVisitDetails(p, latestVisitIndex);
-  
-  // Bind change handler
-  const newSelector = selector.cloneNode(true);
-  selector.parentNode.replaceChild(newSelector, selector);
-  newSelector.addEventListener("change", (e) => {
-    loadRegistryVisitDetails(p, parseInt(e.target.value));
-  });
-}
+  const phSearchInput = document.getElementById("ph-quick-drug-search");
+  const phDropdown = document.getElementById("ph-drug-suggestions-dropdown");
 
-function loadRegistryVisitDetails(p, visitIndex) {
-  const v = p.visits[visitIndex];
-  if (!v) return;
-  
-  // Timestamps
-  document.getElementById("reg-checkin-date").textContent = v.date || "-";
-  document.getElementById("reg-exam-date").textContent = v.examDate || "Awaiting doctor consultation";
-  
-  // Vitals
-  document.getElementById("reg-vital-temp").textContent = `${v.vitals.temp} °F`;
-  document.getElementById("reg-vital-weight").textContent = `${v.vitals.weight} kg`;
-  document.getElementById("reg-vital-bp").textContent = v.vitals.bp;
-  document.getElementById("reg-vital-pulse").textContent = `${v.vitals.pulse} bpm`;
-  
-  // Complaints, history, diagnosis
-  document.getElementById("reg-symptoms").textContent = v.symptoms || "No symptoms recorded.";
-  document.getElementById("reg-prev-history").textContent = v.prevHistory || "No previous history recorded.";
-  document.getElementById("reg-family-history").textContent = v.familyHistory || "No family medical history recorded.";
-  document.getElementById("reg-exam").textContent = v.physicalExam || "No physical/chest exam findings recorded.";
-  document.getElementById("reg-diagnosis").textContent = v.diagnosis || "No clinical diagnosis notes provided yet.";
-  
-  // Prescriptions list
-  const medsList = document.getElementById("reg-meds-list");
-  medsList.innerHTML = "";
-  
-  if (v.medicines.length === 0) {
-    medsList.innerHTML = `<div class="no-data" style="padding: 1rem; font-size:0.8rem;">No medicines prescribed.</div>`;
-  } else {
-    v.medicines.forEach(med => {
-      const div = document.createElement("div");
-      div.className = "med-item";
-      div.innerHTML = `
-        <div class="med-details">
-          <span class="med-name">${med.name}</span> <span style="font-size:0.75rem; color:var(--text-secondary);">(${med.dose})</span>
-          <div class="med-schedule">${med.freq} | Duration: ${med.dur}</div>
-        </div>
-        <span style="font-size:0.8rem; font-weight:600; color:${med.dispensed ? 'var(--color-success)' : 'var(--color-warning)'}">
-          ${med.dispensed ? '✓ Dispensed' : '⟳ Pending'}
-        </span>
-      `;
-      medsList.appendChild(div);
+  // Doctor Autocomplete
+  if (docSearchInput && docDropdown) {
+    docSearchInput.addEventListener("input", () => {
+      const q = docSearchInput.value.toLowerCase().trim();
+      renderDrugSuggestions(q, docDropdown, (selectedBrand, med) => {
+        currentDocMeds.push({
+          name: selectedBrand,
+          dose: med.defaultDose || "500mg",
+          freq: med.defaultFreq || "1-0-1",
+          dur: med.defaultDur || "5 Days",
+          price: med.price || 0,
+          dispensed: false
+        });
+        renderDocMedsRows();
+        docSearchInput.value = "";
+        docDropdown.classList.remove("active");
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!docSearchInput.contains(e.target) && !docDropdown.contains(e.target)) {
+        docDropdown.classList.remove("active");
+      }
     });
   }
-  
-  // Diagnostics list
-  const reportsList = document.getElementById("reg-reports-list");
-  reportsList.innerHTML = "";
-  
-  if (v.reports.length === 0) {
-    reportsList.innerHTML = `<div class="no-data" style="padding: 1rem; font-size:0.8rem;">No laboratory/radiology orders.</div>`;
-  } else {
-    v.reports.forEach(rep => {
-      const div = document.createElement("div");
-      div.className = "med-item";
-      div.style.flexDirection = "column";
-      div.style.alignItems = "flex-start";
-      div.style.gap = "0.25rem";
-      
-      div.innerHTML = `
-        <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-          <strong style="color:#fff; font-size:0.85rem;">${rep.name}</strong>
-          <span style="font-size:0.75rem; font-weight:600; color:${rep.status === 'completed' ? 'var(--color-success)' : 'var(--color-warning)'}">
-            ${rep.status === 'completed' ? 'Completed' : 'Pending Lab'}
+
+  // Pharmacy Autocomplete
+  if (phSearchInput && phDropdown) {
+    phSearchInput.addEventListener("input", () => {
+      const q = phSearchInput.value.toLowerCase().trim();
+      renderDrugSuggestions(q, phDropdown, (selectedBrand, med) => {
+        if (!activePharmaPatient) {
+          alert("Please select a patient from the queue first to add medicines.");
+          return;
+        }
+        const cv = getCurrentVisit(activePharmaPatient);
+        cv.medicines.push({
+          name: selectedBrand,
+          dose: med.defaultDose || "500mg",
+          freq: med.defaultFreq || "1-0-1",
+          dur: med.defaultDur || "5 Days",
+          price: med.price || 50,
+          dispensed: false
+        });
+        selectPatientForPharmacy(activePharmaPatient.id);
+        phSearchInput.value = "";
+        phDropdown.classList.remove("active");
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!phSearchInput.contains(e.target) && !phDropdown.contains(e.target)) {
+        phDropdown.classList.remove("active");
+      }
+    });
+  }
+}
+
+function renderDrugSuggestions(query, dropdownEl, onSelectCallback) {
+  if (!query) {
+    dropdownEl.innerHTML = "";
+    dropdownEl.classList.remove("active");
+    return;
+  }
+
+  const matches = masterMedicines.filter(m => 
+    m.name.toLowerCase().includes(query) ||
+    m.genericName.toLowerCase().includes(query) ||
+    m.composition.toLowerCase().includes(query) ||
+    (m.alternativeBrands && m.alternativeBrands.some(b => b.toLowerCase().includes(query)))
+  );
+
+  dropdownEl.innerHTML = "";
+  if (matches.length === 0) {
+    dropdownEl.innerHTML = `<div style="padding:0.85rem 1rem; font-size:0.85rem; color:var(--text-secondary);">No matching drugs or brands found.</div>`;
+    dropdownEl.classList.add("active");
+    return;
+  }
+
+  matches.forEach(med => {
+    const item = document.createElement("div");
+    item.className = "drug-suggestion-item";
+
+    // Alternative brand chips
+    let altChipsHtml = "";
+    if (med.alternativeBrands && med.alternativeBrands.length > 0) {
+      altChipsHtml = `
+        <div class="drug-alt-brands">
+          <span style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">Equivalent Brands:</span>
+          ${med.alternativeBrands.map(b => `<span class="alt-brand-chip" data-brand="${b}">+ ${b}</span>`).join("")}
+        </div>
+      `;
+    }
+
+    item.innerHTML = `
+      <div class="drug-item-header">
+        <div>
+          <span class="drug-brand-title">${med.name}</span>
+          <span class="badge badge-purple" style="font-size:0.68rem; margin-left:6px;">${med.category}</span>
+        </div>
+        <span style="font-weight:800; color:var(--primary-purple-dark); font-size:0.9rem;">₹${med.price}</span>
+      </div>
+      <div class="drug-generic-sub">
+        <strong>Active Drug:</strong> ${med.genericName} (${med.composition}) • Std Dose: ${med.defaultDose}
+      </div>
+      ${altChipsHtml}
+    `;
+
+    // Main item click selects primary brand
+    item.addEventListener("click", (e) => {
+      const chip = e.target.closest(".alt-brand-chip");
+      if (chip) {
+        const brandName = chip.getAttribute("data-brand");
+        onSelectCallback(brandName, med);
+      } else {
+        onSelectCallback(med.name, med);
+      }
+    });
+
+    dropdownEl.appendChild(item);
+  });
+
+  dropdownEl.classList.add("active");
+}
+
+// =========================================================================
+// 3. RECEPTION DESK (INTAKE & CONSULTATION DIRECT BILLING)
+// =========================================================================
+
+function renderReceptionDesk() {
+  const totalEl = document.getElementById("reception-stat-total");
+  const waitEl = document.getElementById("reception-stat-waiting");
+  const consultsEl = document.getElementById("reception-stat-consultations");
+  const revEl = document.getElementById("reception-stat-revenue");
+  const queueList = document.getElementById("reception-queue-list");
+  const countBadge = document.getElementById("reception-queue-count");
+
+  let totalWaiting = 0;
+  let totalConsults = 0;
+  let totalRev = 0;
+
+  patients.forEach(p => {
+    if (p.visits) {
+      p.visits.forEach(v => {
+        totalConsults++;
+        if (v.status === "WAITING_FOR_DOCTOR") totalWaiting++;
+        if (v.consultationPaid) totalRev += Math.max(0, (v.consultationFee || 1000) - (v.consultationDiscount || 0));
+      });
+    }
+  });
+
+  if (totalEl) totalEl.textContent = patients.length;
+  if (waitEl) waitEl.textContent = totalWaiting;
+  if (consultsEl) consultsEl.textContent = totalConsults;
+  if (revEl) revEl.textContent = `₹${totalRev.toLocaleString()}`;
+  if (countBadge) countBadge.textContent = `${patients.length} Registered`;
+
+  if (queueList) {
+    queueList.innerHTML = "";
+    if (patients.length === 0) {
+      queueList.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-secondary);">No patients registered yet.</div>`;
+      return;
+    }
+
+    patients.slice().reverse().forEach(p => {
+      const cv = getCurrentVisit(p);
+      const card = document.createElement("div");
+      card.className = "patient-card";
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <strong style="color:var(--text-main); font-size:0.95rem;">${p.name}</strong>
+            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
+              ${p.id} • ${p.age}y / ${p.gender} • ${p.phone}
+            </div>
+          </div>
+          <span class="badge ${cv.status === 'WAITING_FOR_DOCTOR' ? 'badge-waiting' : 'badge-success'}">
+            ${cv.status === 'WAITING_FOR_DOCTOR' ? 'Waiting' : 'Attended'}
           </span>
         </div>
-        <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.25rem; font-style:italic; background:rgba(0,0,0,0.1); padding:0.4rem; border-radius:4px; width:100%;">
-          Findings: ${rep.findings || "Awaiting scan findings input."}
-        </p>
+        <div style="font-size:0.75rem; color:var(--primary-purple-dark); margin-top:0.4rem; font-weight:600;">
+          Consult Fee: ₹${(cv.consultationFee || 1000) - (cv.consultationDiscount || 0)} (${cv.consultationPaid ? 'Paid via ' + cv.consultationPaymentMode : 'Unpaid'})
+        </div>
       `;
-      reportsList.appendChild(div);
+      queueList.appendChild(card);
     });
   }
 }
 
-function triggerPrescriptionPrint(patient, visit) {
-  // Populate details
-  document.getElementById("print-p-id").textContent = patient.id || "-";
-  document.getElementById("print-p-name").textContent = patient.name || "-";
-  document.getElementById("print-p-age-gender").textContent = `${patient.age || "-"}y, ${patient.gender || "-"}`;
-  document.getElementById("print-visit-date").textContent = visit.date || visit.examDate || "-";
-  
-  // Vitals
-  document.getElementById("print-vitals-bp").textContent = (visit.vitals && visit.vitals.bp) ? visit.vitals.bp : "-";
-  document.getElementById("print-vitals-pulse").textContent = (visit.vitals && visit.vitals.pulse) ? visit.vitals.pulse : "-";
-  document.getElementById("print-vitals-weight").textContent = (visit.vitals && visit.vitals.weight) ? visit.vitals.weight : "-";
-  document.getElementById("print-vitals-temp").textContent = (visit.vitals && visit.vitals.temp) ? visit.vitals.temp : "-";
-  
-  // Clinical
-  document.getElementById("print-complaints").textContent = visit.symptoms || "No significant complaints.";
-  document.getElementById("print-history").textContent = (visit.prevHistory || "None") + " | Family History: " + (visit.familyHistory || "None");
-  document.getElementById("print-exam").textContent = visit.physicalExam || "No abnormalities detected on physical exam.";
-  document.getElementById("print-diagnosis").textContent = visit.diagnosis || "No primary clinical diagnosis recorded.";
-  
-  // Prescribed medicines table
-  const tbody = document.getElementById("print-meds-body");
-  tbody.innerHTML = "";
-  if (!visit.medicines || visit.medicines.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 1.5rem; font-style:italic;">No medications prescribed.</td></tr>`;
-  } else {
-    visit.medicines.forEach((med, index) => {
-      const tr = document.createElement("tr");
-      // Add compositions based on the name if possible, or leave clean
-      let compositionText = "";
-      const medNameUpper = med.name.toUpperCase();
-      if (medNameUpper.includes("RCINEX")) {
-        compositionText = `<p class="print-med-composition">Composition: Isoniazid (INH 300 MG + Rifampicin 600 MG)</p>`;
-      } else if (medNameUpper.includes("COMBUTOL")) {
-        compositionText = `<p class="print-med-composition">Composition: Ethambutol 600 MG</p>`;
-      } else if (medNameUpper.includes("PYZINA")) {
-        compositionText = `<p class="print-med-composition">Composition: Pyrazinamide 1000 MG</p>`;
-      } else if (medNameUpper.includes("ALLEGRA")) {
-        compositionText = `<p class="print-med-composition">Composition: Fexofenadine 120 MG + Montelukast 10 MG</p>`;
-      } else if (medNameUpper.includes("ATARAX")) {
-        compositionText = `<p class="print-med-composition">Composition: Hydroxyzine 10 MG</p>`;
-      } else if (medNameUpper.includes("PANLYCO")) {
-        compositionText = `<p class="print-med-composition">Composition: Lycopene + Multivitamins + Minerals</p>`;
-      }
-      
-      tr.innerHTML = `
-        <td>${index + 1}</td>
-        <td>
-          <strong>${med.name.toUpperCase()}</strong>
-          ${compositionText}
-        </td>
-        <td style="text-align: center; font-weight: 600;">${med.freq}</td>
-        <td style="text-align: right;">${med.dose} - Take for ${med.dur}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-  
-  // Advice / investigations
-  const adviceDiv = document.getElementById("print-advice-investigations");
-  adviceDiv.innerHTML = "";
-  let adviceItems = [];
-  if (visit.reports && visit.reports.length > 0) {
-    const reportNames = visit.reports.map(r => r.name).join(", ");
-    adviceItems.push(`<strong>Investigations Ordered:</strong> ${reportNames}`);
-  }
-  adviceItems.push(`<strong>General Advice:</strong> Rest well, keep hydrated, take medicines on time as prescribed.`);
-  
-  adviceDiv.innerHTML = adviceItems.map(item => `<p style="margin: 4px 0;">${item}</p>`).join("");
-  
-  // Next visit
-  document.getElementById("print-next-visit").textContent = "As advised / Review after 7 days";
-  
-  // Set body print class
-  document.body.className = "print-prescription-mode";
-  
-  // Print
-  window.print();
-  
-  // Clear body print class
-  document.body.className = "";
-}
+function setupReceptionEvents() {
+  const form = document.getElementById("patient-intake-form");
+  if (!form) return;
 
-// ==========================================
-// BILLING DESK OPERATIONS
-// ==========================================
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("intake-name").value.trim();
+    const phone = document.getElementById("intake-phone").value.trim();
+    const age = parseInt(document.getElementById("intake-age").value);
+    const gender = document.getElementById("intake-gender").value;
+    const bloodGroup = document.getElementById("intake-blood").value;
 
-function renderBillingQueue() {
-  const renderQueueFor = (containerId) => {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = "";
-    
-    let billingPatients = [];
-    if (containerId === "billing-queue-consult") {
-      billingPatients = patients.filter(p => {
-        const cv = getCurrentVisit(p);
-        return cv && cv.status === "WAITING_FOR_DOCTOR" && !cv.consultationPaid;
+    const temp = parseFloat(document.getElementById("intake-temp").value);
+    const bp = document.getElementById("intake-bp").value.trim();
+    const pulse = parseInt(document.getElementById("intake-pulse").value);
+    const weight = parseFloat(document.getElementById("intake-weight").value);
+
+    const discount = parseFloat(document.getElementById("intake-consult-discount").value) || 0;
+    const payMode = document.getElementById("intake-consult-paymode").value;
+
+    const newPatient = {
+      name,
+      phone,
+      age,
+      gender,
+      bloodGroup,
+      vitals: { temp, bp, pulse, weight }
+    };
+
+    try {
+      const res = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newPatient)
       });
-    } else if (containerId === "billing-queue-meds") {
-      billingPatients = patients.filter(p => {
-        const cv = getCurrentVisit(p);
-        return cv && cv.needsPharmacy && !cv.medicinesBillPaid;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Intake registration failed");
+
+      // Settle Consultation Fee
+      const savedPatient = data.patient;
+      await fetch(`/api/billing/consultation-settle/${savedPatient.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentMode: payMode,
+          discount: discount,
+          fee: 1000
+        })
       });
-    } else {
-      billingPatients = patients.filter(p => {
-        const cv = getCurrentVisit(p);
-        return cv && cv.status !== "completed";
-      });
+
+      showToast("Intake Successful", `Patient ${name} registered with ID: ${savedPatient.id}! Sent to Doctor queue.`, "success");
+      form.reset();
+      loadInitialData();
+    } catch (err) {
+      showToast("Registration Error", err.message, "error");
     }
-    
-    if (billingPatients.length === 0) {
-      container.innerHTML = `<div class="no-data">No patients in billing queue.</div>`;
+  });
+}
+
+// =========================================================================
+// 4. DOCTOR DESK (CLINICAL EMR & LONGITUDINAL HISTORY)
+// =========================================================================
+
+function populateScansDropdown() {
+  const select = document.getElementById("doc-scan-select");
+  const preview = document.getElementById("doc-scan-price-preview");
+  if (!select) return;
+
+  select.innerHTML = "";
+  masterScans.forEach((scan) => {
+    const opt = document.createElement("option");
+    opt.value = scan.name;
+    opt.textContent = `${scan.name} (${scan.modality}) — ₹${scan.price}`;
+    opt.setAttribute("data-price", scan.price);
+    opt.setAttribute("data-modality", scan.modality);
+    select.appendChild(opt);
+  });
+
+  if (masterScans.length > 0 && preview) {
+    preview.value = `₹${masterScans[0].price}`;
+  }
+
+  select.addEventListener("change", () => {
+    const chosen = select.options[select.selectedIndex];
+    if (chosen && preview) {
+      preview.value = `₹${chosen.getAttribute("data-price")}`;
+    }
+  });
+}
+
+function renderDoctorDesk() {
+  const queueList = document.getElementById("doc-queue-list");
+  const countBadge = document.getElementById("doc-queue-count");
+  const waitingPatients = patients.filter(p => {
+    const cv = getCurrentVisit(p);
+    return cv && cv.status === "WAITING_FOR_DOCTOR";
+  });
+
+  if (countBadge) countBadge.textContent = `${waitingPatients.length} Waiting`;
+
+  if (queueList) {
+    queueList.innerHTML = "";
+    if (waitingPatients.length === 0) {
+      queueList.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-secondary);">No patients currently waiting.</div>`;
       return;
     }
-    
-    billingPatients.forEach(p => {
-      const cv = getCurrentVisit(p);
+
+    waitingPatients.forEach(p => {
+      const isSelected = activeDocPatient && activeDocPatient.id === p.id;
       const card = document.createElement("div");
-      card.className = "patient-card";
-      
-      if (activeBillingPatient && activeBillingPatient.id === p.id) {
-        card.style.borderColor = "var(--color-cyan)";
-        card.style.backgroundColor = "rgba(6, 182, 212, 0.05)";
-      }
-      
-      const consultPaid = !!cv.consultationPaid;
-      const medsPaid = !!cv.medicinesBillPaid;
-      const hasMeds = cv.medicines && cv.medicines.length > 0;
-      
-      const consultBadge = consultPaid 
-        ? `<span class="badge badge-success" style="font-size:0.7rem; padding: 0.1rem 0.3rem;">Consult Paid</span>` 
-        : `<span class="badge badge-waiting" style="font-size:0.7rem; padding: 0.1rem 0.3rem;">Consult Unpaid</span>`;
-        
-      let medsBadge = "";
-      if (hasMeds) {
-        medsBadge = medsPaid 
-          ? `<span class="badge badge-success" style="font-size:0.7rem; padding: 0.1rem 0.3rem; margin-left: 0.25rem;">Meds Paid</span>` 
-          : `<span class="badge badge-waiting" style="font-size:0.7rem; padding: 0.1rem 0.3rem; margin-left: 0.25rem; background-color: #ef4444; color: #fff;">Meds Unpaid</span>`;
-      } else {
-        medsBadge = `<span class="badge" style="font-size:0.7rem; padding: 0.1rem 0.3rem; margin-left: 0.25rem; background: rgba(255,255,255,0.08); color: #aaa;">No Meds</span>`;
-      }
-      
+      card.className = `patient-card ${isSelected ? 'active' : ''}`;
       card.innerHTML = `
-        <div class="patient-info">
-          <div class="patient-header">
-            <span class="patient-name">${p.name}</span>
-            <span class="patient-id">${p.id}</span>
-          </div>
-          <div style="margin-top: 0.4rem; display: flex; gap: 0.25rem;">
-            ${consultBadge}
-            ${medsBadge}
-          </div>
-        </div>
-        <div class="patient-actions">
-          <button class="btn btn-secondary btn-sm btn-billing-select" data-id="${p.id}" style="border-color:var(--color-cyan); color:#e0f7fa;">Bill</button>
-        </div>
-      `;
-      container.appendChild(card);
-    });
-  };
-
-  renderQueueFor("billing-queue-consult");
-  renderQueueFor("billing-queue-meds");
-
-  document.querySelectorAll(".btn-billing-select").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      selectPatientForBilling(id);
-    });
-  });
-}
-
-function selectPatientForBilling(id) {
-  const p = patients.find(pat => pat.id === id);
-  if (!p) return;
-  
-  activeBillingPatient = p;
-  const cv = getCurrentVisit(p);
-  
-  // Show details panel, hide placeholder
-  const consultDetails = document.getElementById("billing-details-consult-card");
-  if (consultDetails) consultDetails.style.display = "block";
-  const consultPlaceholder = document.getElementById("billing-placeholder-consult-card");
-  if (consultPlaceholder) consultPlaceholder.style.display = "none";
-
-  const medsDetails = document.getElementById("billing-details-meds-card");
-  if (medsDetails) medsDetails.style.display = "block";
-  const medsPlaceholder = document.getElementById("billing-placeholder-meds-card");
-  if (medsPlaceholder) medsPlaceholder.style.display = "none";
-  
-  // Populate Active Patient Banners
-  const bannerConsult = document.getElementById("billing-patient-banner-consult");
-  const bannerContent = `
-    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-      <div>
-        <span style="font-size: 0.78rem; color: var(--color-cyan); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Active Billing Profile</span>
-        <strong style="font-size: 1.15rem; color: #fff; font-family: var(--font-display);">${p.name}</strong>
-        <span style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 10px;">ID: ${p.id} | ${p.gender}, ${p.age} years | Contact: ${maskPhone(p.phone)}</span>
-      </div>
-      <div style="text-align: right;">
-        <span style="font-size: 0.75rem; color: var(--text-secondary); display: block;">Check-in Date</span>
-        <strong style="font-size: 0.85rem; color: #fff;">${cv.date}</strong>
-      </div>
-    </div>
-  `;
-  if (bannerConsult) bannerConsult.innerHTML = bannerContent;
-
-  const bannerMeds = document.getElementById("billing-patient-banner-meds");
-  if (bannerMeds) bannerMeds.innerHTML = bannerContent;
-  
-  // Populate Consultation Billing Section
-  const consultFeeInput = document.getElementById("bill-consult-fee");
-  const consultPaid = !!cv.consultationPaid;
-  
-  // Set default if not set
-  if (cv.consultationFee === undefined) cv.consultationFee = 1000;
-  if (cv.consultationDiscount === undefined) cv.consultationDiscount = 0;
-  
-  if (consultFeeInput) consultFeeInput.value = cv.consultationFee;
-  
-  // Calculate and update consultation totals UI
-  updateConsultationTotals(cv);
-  
-  // Consultation Status badge
-  const consultBadge = document.getElementById("billing-consult-status-badge");
-  const btnPayConsult = document.getElementById("btn-pay-consult");
-  if (consultPaid) {
-    if (consultBadge) {
-      consultBadge.className = "badge badge-success";
-      consultBadge.textContent = "Paid";
-    }
-    if (btnPayConsult) {
-      btnPayConsult.className = "btn btn-success";
-      btnPayConsult.innerHTML = `<i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Paid`;
-      btnPayConsult.disabled = true;
-    }
-    if (consultFeeInput) consultFeeInput.disabled = true;
-  } else {
-    if (consultBadge) {
-      consultBadge.className = "badge badge-waiting";
-      consultBadge.textContent = "Unpaid";
-    }
-    if (btnPayConsult) {
-      btnPayConsult.className = "btn btn-primary";
-      btnPayConsult.innerHTML = `<i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Pay`;
-      btnPayConsult.disabled = false;
-    }
-    if (consultFeeInput) consultFeeInput.disabled = false;
-  }
-  
-  // Populate Medicine Billing Section
-  const medsPaid = !!cv.medicinesBillPaid;
-  const hasMeds = cv.medicines && cv.medicines.length > 0;
-  const medsAwaiting = document.getElementById("billing-meds-awaiting");
-  const medsTableWrapper = document.getElementById("billing-meds-table-wrapper");
-  const medsSummaryBox = document.getElementById("billing-meds-summary-box");
-  const btnPayMeds = document.getElementById("btn-pay-meds");
-  const medsBadge = document.getElementById("billing-meds-status-badge");
-  
-  let medsTotal = cv.medicinesBillAmount || 0;
-  let allMedsPriced = true;
-  
-  if (hasMeds) {
-    cv.medicines.forEach(m => {
-      if (m.price === undefined || m.price === null || m.price === "") {
-        allMedsPriced = false;
-      }
-    });
-  }
-  
-  if (!hasMeds) {
-    if (medsAwaiting) {
-      medsAwaiting.style.display = "block";
-      medsAwaiting.innerHTML = `
-        <i data-lucide="info" style="width: 32px; height: 32px; color: var(--text-secondary); margin-bottom: 0.5rem;"></i>
-        <p style="font-size: 0.9rem; margin: 0; color: var(--text-secondary);">No medicines prescribed for this visit yet.</p>
-      `;
-    }
-    if (medsTableWrapper) medsTableWrapper.style.display = "none";
-    if (medsSummaryBox) medsSummaryBox.style.display = "none";
-    if (btnPayMeds) btnPayMeds.style.display = "none";
-    if (medsBadge) {
-      medsBadge.className = "badge";
-      medsBadge.textContent = "N/A";
-      medsBadge.style.background = "rgba(255,255,255,0.08)";
-      medsBadge.style.color = "#aaa";
-    }
-  } else if (!allMedsPriced && medsTotal === 0) {
-    if (medsAwaiting) {
-      medsAwaiting.style.display = "block";
-      medsAwaiting.innerHTML = `
-        <i data-lucide="clock" style="width: 32px; height: 32px; color: var(--color-warning); margin-bottom: 0.5rem;"></i>
-        <p style="font-size: 0.9rem; margin: 0; color: var(--text-secondary);">Awaiting medicine pricing input from the pharmacy desk.</p>
-      `;
-    }
-    if (medsTableWrapper) medsTableWrapper.style.display = "none";
-    if (medsSummaryBox) medsSummaryBox.style.display = "none";
-    if (btnPayMeds) btnPayMeds.style.display = "none";
-    if (medsBadge) {
-      medsBadge.className = "badge badge-waiting";
-      medsBadge.textContent = "Awaiting Price";
-    }
-  } else {
-    if (medsAwaiting) medsAwaiting.style.display = "none";
-    if (medsTableWrapper) medsTableWrapper.style.display = "block";
-    if (medsSummaryBox) medsSummaryBox.style.display = "block";
-    if (btnPayMeds) btnPayMeds.style.display = "block";
-    
-    let calculatedMedsTotal = 0;
-    const tbody = document.getElementById("billing-meds-tbody");
-    if (tbody) {
-      tbody.innerHTML = "";
-      cv.medicines.forEach(m => {
-        const price = parseFloat(m.price) || 0;
-        calculatedMedsTotal += price;
-        
-        const tr = document.createElement("tr");
-        tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
-        tr.innerHTML = `
-          <td style="padding: 0.6rem 0.25rem;">
-            <strong style="color: #fff; font-size: 0.85rem;">${m.name}</strong> - <span style="font-size: 0.78rem; color: var(--text-secondary);">${m.dose} (${m.dur})</span>
-          </td>
-          <td style="padding: 0.6rem 0.25rem; text-align: right; color: #fff; font-weight: 600;">₹${price.toFixed(2)}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    } else {
-      cv.medicines.forEach(m => {
-        const price = parseFloat(m.price) || 0;
-        calculatedMedsTotal += price;
-      });
-    }
-    
-    cv.medicinesBillAmount = calculatedMedsTotal;
-    const billMedsTotalEl = document.getElementById("bill-meds-total");
-    if (billMedsTotalEl) billMedsTotalEl.textContent = `₹${calculatedMedsTotal.toFixed(2)}`;
-    
-    if (medsPaid) {
-      if (medsBadge) {
-        medsBadge.className = "badge badge-success";
-        medsBadge.textContent = "Paid";
-      }
-      if (btnPayMeds) {
-        btnPayMeds.className = "btn btn-success";
-        btnPayMeds.innerHTML = `<i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Paid`;
-        btnPayMeds.disabled = true;
-      }
-    } else {
-      if (medsBadge) {
-        medsBadge.className = "badge badge-waiting";
-        medsBadge.textContent = "Unpaid";
-      }
-      if (btnPayMeds) {
-        btnPayMeds.className = "btn btn-primary";
-        btnPayMeds.innerHTML = `<i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Pay`;
-        btnPayMeds.disabled = false;
-      }
-    }
-  }
-  
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
-  
-  renderAllQueues();
-}
-
-function updateConsultationTotals(cv) {
-  const grossInput = document.getElementById("bill-consult-fee");
-  const grossVal = parseFloat(grossInput.value) || 0;
-  cv.consultationFee = grossVal;
-  
-  const discountVal = parseFloat(cv.consultationDiscount) || 0;
-  const payable = Math.max(0, grossVal - discountVal);
-  
-  document.getElementById("bill-consult-gross").textContent = `₹${grossVal.toFixed(2)}`;
-  document.getElementById("bill-consult-disc-val").textContent = `-₹${discountVal.toFixed(2)}`;
-  document.getElementById("bill-consult-payable").textContent = `₹${payable.toFixed(2)}`;
-}
-
-function printConsultationBill(p, cv) {
-  document.getElementById("print-consult-p-name").textContent = p.name;
-  document.getElementById("print-consult-p-id").textContent = p.id;
-  document.getElementById("print-consult-p-age-gender").textContent = `${p.age}y / ${p.gender}`;
-  document.getElementById("print-consult-date").textContent = getFormattedDateTime();
-  document.getElementById("print-consult-phone").textContent = maskPhone(p.phone);
-  document.getElementById("print-consult-status").textContent = cv.consultationPaid ? "PAID" : "UNPAID";
-  document.getElementById("print-consult-status").style.color = cv.consultationPaid ? "#2a9d8f" : "#e63946";
-  
-  const gross = parseFloat(cv.consultationFee) || 1000;
-  const disc = parseFloat(cv.consultationDiscount) || 0;
-  const net = Math.max(0, gross - disc);
-  
-  document.getElementById("print-consult-gross-fee").textContent = `₹${gross.toFixed(2)}`;
-  document.getElementById("print-consult-discount").textContent = `-₹${disc.toFixed(2)}`;
-  document.getElementById("print-consult-net-fee").textContent = `₹${net.toFixed(2)}`;
-  
-  document.body.className = "print-consultation-mode";
-  window.print();
-  document.body.className = "";
-}
-
-function printMedicineBill(p, cv) {
-  document.getElementById("print-meds-p-name").textContent = p.name;
-  document.getElementById("print-meds-p-id").textContent = p.id;
-  document.getElementById("print-meds-p-age-gender").textContent = `${p.age}y / ${p.gender}`;
-  document.getElementById("print-meds-date").textContent = getFormattedDateTime();
-  document.getElementById("print-meds-phone").textContent = maskPhone(p.phone);
-  document.getElementById("print-meds-status").textContent = cv.medicinesBillPaid ? "PAID" : "UNPAID";
-  document.getElementById("print-meds-status").style.color = cv.medicinesBillPaid ? "#2a9d8f" : "#e63946";
-  
-  const tbody = document.getElementById("print-meds-bill-body");
-  tbody.innerHTML = "";
-  
-  let medsTotal = 0;
-  cv.medicines.forEach((med, index) => {
-    const price = parseFloat(med.price) || 0;
-    medsTotal += price;
-    
-    const tr = document.createElement("tr");
-    tr.style.borderBottom = "1px solid #eee";
-    tr.innerHTML = `
-      <td style="padding: 12px 10px; text-align: left;">${index + 1}</td>
-      <td style="padding: 12px 10px; text-align: left;">
-        <strong>${med.name.toUpperCase()}</strong>
-        <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">Schedule: ${med.freq}</div>
-      </td>
-      <td style="padding: 12px 10px; text-align: center;">${med.dose} (${med.dur})</td>
-      <td style="padding: 12px 10px; text-align: right; font-weight: 600;">₹${price.toFixed(2)}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-  
-  // Total Row
-  const totalTr = document.createElement("tr");
-  totalTr.style.fontWeight = "700";
-  totalTr.style.borderBottom = "2px solid #2a9d8f";
-  totalTr.style.background = "#fdfefe";
-  totalTr.innerHTML = `
-    <td colspan="3" style="padding: 15px 10px; text-align: left; font-size: 1.05rem;">Total Paid Amount</td>
-    <td style="padding: 15px 10px; text-align: right; font-size: 1.05rem; color: #2a9d8f;">₹${medsTotal.toFixed(2)}</td>
-  `;
-  tbody.appendChild(totalTr);
-  
-  document.body.className = "print-medicine-mode";
-  window.print();
-  document.body.className = "";
-}
-
-function setupBillingEvents() {
-  const consultFeeInput = document.getElementById("bill-consult-fee");
-  if (consultFeeInput) {
-    consultFeeInput.addEventListener("input", () => {
-      if (!activeBillingPatient) return;
-      const cv = getCurrentVisit(activeBillingPatient);
-      if (cv.consultationPaid) return;
-      
-      cv.consultationFee = parseFloat(consultFeeInput.value) || 0;
-      updateConsultationTotals(cv);
-    });
-  }
-
-  document.querySelectorAll(".btn-discount-preset").forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (!activeBillingPatient) return;
-      const cv = getCurrentVisit(activeBillingPatient);
-      if (cv.consultationPaid) return;
-      
-      document.querySelectorAll(".btn-discount-preset").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      
-      const pct = btn.getAttribute("data-pct");
-      const customWrapper = document.getElementById("custom-discount-wrapper");
-      
-      if (pct === "custom") {
-        customWrapper.style.display = "block";
-        const customInput = document.getElementById("bill-discount-custom");
-        customInput.value = cv.consultationDiscount || "";
-        customInput.focus();
-      } else {
-        customWrapper.style.display = "none";
-        const percentage = parseFloat(pct) || 0;
-        const grossFee = parseFloat(document.getElementById("bill-consult-fee").value) || 0;
-        cv.consultationDiscount = Math.round((grossFee * percentage) / 100);
-        updateConsultationTotals(cv);
-      }
-    });
-  });
-  
-  const customDiscInput = document.getElementById("bill-discount-custom");
-  if (customDiscInput) {
-    customDiscInput.addEventListener("input", () => {
-      if (!activeBillingPatient) return;
-      const cv = getCurrentVisit(activeBillingPatient);
-      if (cv.consultationPaid) return;
-      
-      const val = parseFloat(customDiscInput.value) || 0;
-      cv.consultationDiscount = val;
-      updateConsultationTotals(cv);
-    });
-  }
-
-  const btnPayConsult = document.getElementById("btn-pay-consult");
-  if (btnPayConsult) {
-    btnPayConsult.addEventListener("click", async () => {
-      if (!activeBillingPatient) return;
-      const p = patients.find(pat => pat.id === activeBillingPatient.id);
-      const cv = getCurrentVisit(p);
-      
-      cv.consultationPaid = true;
-      p.logs.push(`Consultation payment of ₹${Math.max(0, (cv.consultationFee || 1000) - (cv.consultationDiscount || 0)).toFixed(2)} collected.`);
-      await addLog(`Consultation payment collected for ${p.name}.`, "success");
-      
-      await updatePatientRecord(p);
-      selectPatientForBilling(p.id);
-      
-      if (activeBillingPatient) {
-        const updatedCv = getCurrentVisit(activeBillingPatient);
-        printConsultationBill(activeBillingPatient, updatedCv);
-      }
-    });
-  }
-
-  const btnPayMeds = document.getElementById("btn-pay-meds");
-  if (btnPayMeds) {
-    btnPayMeds.addEventListener("click", async () => {
-      if (!activeBillingPatient) return;
-      const p = patients.find(pat => pat.id === activeBillingPatient.id);
-      const cv = getCurrentVisit(p);
-      
-      cv.medicinesBillPaid = true;
-      p.logs.push(`Medicine payment of ₹${(cv.medicinesBillAmount || 0).toFixed(2)} collected.`);
-      await addLog(`Medicine bill payment collected for ${p.name}.`, "success");
-      
-      await updatePatientRecord(p);
-      selectPatientForBilling(p.id);
-      
-      if (activeBillingPatient) {
-        const updatedCv = getCurrentVisit(activeBillingPatient);
-        printMedicineBill(activeBillingPatient, updatedCv);
-      }
-    });
-  }
-
-  const btnPrintConsult = document.getElementById("btn-print-consult");
-  if (btnPrintConsult) {
-    btnPrintConsult.addEventListener("click", () => {
-      if (!activeBillingPatient) return;
-      const cv = getCurrentVisit(activeBillingPatient);
-      printConsultationBill(activeBillingPatient, cv);
-    });
-  }
-
-  const btnPrintMeds = document.getElementById("btn-print-meds");
-  if (btnPrintMeds) {
-    btnPrintMeds.addEventListener("click", () => {
-      if (!activeBillingPatient) return;
-      const cv = getCurrentVisit(activeBillingPatient);
-      printMedicineBill(activeBillingPatient, cv);
-    });
-  }
-
-  const btnSubmitPricing = document.getElementById("btn-submit-pricing");
-  if (btnSubmitPricing) {
-    btnSubmitPricing.addEventListener("click", async () => {
-      if (!activePharmacyPatient) return;
-      const p = patients.find(pat => pat.id === activePharmacyPatient.id);
-      const cv = getCurrentVisit(p);
-      
-      const priceInputs = document.querySelectorAll(".pharmacy-med-price");
-      let totalMedsPrice = 0;
-      
-      priceInputs.forEach((input, index) => {
-        const val = parseFloat(input.value) || 0;
-        cv.medicines[index].price = val;
-        totalMedsPrice += val;
-      });
-      
-      cv.medicinesBillAmount = totalMedsPrice;
-      p.logs.push(`Pharmacist submitted medicine bill total of ₹${totalMedsPrice.toFixed(2)}.`);
-      await addLog(`Medicine prices submitted for ${p.name}. Total: ₹${totalMedsPrice.toFixed(2)}.`, "info");
-      
-      await updatePatientRecord(p);
-      alert(`Pricing submitted successfully! Total medicine bill: ₹${totalMedsPrice.toFixed(2)}.`);
-      selectPatientForPharmacy(p.id);
-    });
-  }
-}
-
-// ==========================================
-// PHARMACY REFILL & CUSTOM PRESCRIPTION DESK
-// ==========================================
-let activeRefillPatient = null;
-let activeRefillVisit = null;
-
-function setupPharmacyRefillEvents() {
-  const refillSearchInput = document.getElementById("pharmacy-refill-search");
-  const refillResultsDiv = document.getElementById("pharmacy-refill-results");
-
-  if (refillSearchInput) {
-    refillSearchInput.addEventListener("input", () => {
-      const query = refillSearchInput.value.toLowerCase().trim();
-      if (!query) {
-        refillResultsDiv.innerHTML = "";
-        return;
-      }
-
-      const filtered = patients.filter(p => 
-        p.name.toLowerCase().includes(query) || 
-        p.id.toLowerCase().includes(query) || 
-        p.phone.includes(query)
-      );
-
-      refillResultsDiv.innerHTML = "";
-      if (filtered.length === 0) {
-        refillResultsDiv.innerHTML = `<div class="no-data" style="padding:1rem;">No matching patients found.</div>`;
-        return;
-      }
-
-      filtered.forEach(p => {
-        const card = document.createElement("div");
-        card.className = "patient-card";
-        card.style.padding = "0.6rem 0.8rem";
-        card.style.borderColor = "rgba(6, 182, 212, 0.2)";
-        card.innerHTML = `
-          <div class="patient-info">
-            <div class="patient-header">
-              <span class="patient-name" style="font-size:0.9rem;">${p.name}</span>
-              <span class="patient-id" style="font-size:0.75rem;">${p.id}</span>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <strong style="color:var(--text-main); font-size:0.95rem;">${p.name}</strong>
+            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
+              ${p.id} • ${p.age}y / ${p.gender}
             </div>
-            <div class="patient-meta" style="font-size:0.75rem;">${p.gender}, ${p.age}y | Phone: ${maskPhone(p.phone)}</div>
           </div>
-          <button type="button" class="btn btn-primary btn-sm btn-select-refill-patient" data-id="${p.id}" style="font-size:0.75rem; padding:0.25rem 0.5rem;">Select</button>
-        `;
-        refillResultsDiv.appendChild(card);
-      });
-
-      document.querySelectorAll(".btn-select-refill-patient").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const id = btn.getAttribute("data-id");
-          selectPatientForRefill(id);
-        });
-      });
-    });
-  }
-
-  function selectPatientForRefill(id) {
-    const p = patients.find(pat => pat.id === id);
-    if (!p) return;
-
-    activeRefillPatient = p;
-    document.getElementById("pharmacy-refill-placeholder").style.display = "none";
-    document.getElementById("pharmacy-refill-card").style.display = "block";
-
-    document.getElementById("ph-refill-patient-name").textContent = p.name;
-    document.getElementById("ph-refill-patient-id").textContent = p.id;
-    document.getElementById("ph-refill-patient-meta").textContent = `${p.gender}, ${p.age} Years | Phone: ${maskPhone(p.phone)}`;
-
-    // Populate Previous Visit Selector dropdown
-    const selector = document.getElementById("ph-refill-visit-selector");
-    selector.innerHTML = "";
-
-    p.visits.forEach((v, index) => {
-      const opt = document.createElement("option");
-      opt.value = index;
-      opt.textContent = `Visit ${index + 1}: ${v.date.split(' ')[0]} - Diag: ${v.diagnosis || 'N/A'}`;
-      selector.appendChild(opt);
-    });
-
-    // Default load latest visit
-    const latestIndex = p.visits.length - 1;
-    selector.value = latestIndex;
-    loadRefillVisitDetails(p, latestIndex);
-
-    // Bind change handler
-    const newSelector = selector.cloneNode(true);
-    selector.parentNode.replaceChild(newSelector, selector);
-    newSelector.addEventListener("change", (e) => {
-      loadRefillVisitDetails(p, parseInt(e.target.value));
-    });
-  }
-
-  function loadRefillVisitDetails(p, index) {
-    const v = p.visits[index];
-    if (!v) return;
-
-    activeRefillVisit = v;
-
-    document.getElementById("ph-refill-visit-date").textContent = v.date || "-";
-    document.getElementById("ph-refill-diagnosis").textContent = v.diagnosis || "No diagnosis notes.";
-    document.getElementById("ph-refill-vitals").textContent = `Temp: ${v.vitals.temp}°F, BP: ${v.vitals.bp}, Pulse: ${v.vitals.pulse} bpm, Weight: ${v.vitals.weight} kg`;
-    document.getElementById("ph-refill-symptoms").textContent = v.symptoms || "None.";
-
-    const medsPreview = document.getElementById("ph-refill-meds-preview");
-    medsPreview.innerHTML = "";
-    if (v.medicines.length === 0) {
-      medsPreview.innerHTML = `<div class="no-data" style="padding:0.5rem; font-size:0.8rem;">No medicines prescribed.</div>`;
-    } else {
-      v.medicines.forEach(m => {
-        const item = document.createElement("div");
-        item.style.padding = "0.4rem 0.6rem";
-        item.style.background = "rgba(255,255,255,0.02)";
-        item.style.border = "1px solid rgba(255,255,255,0.05)";
-        item.style.borderRadius = "4px";
-        item.innerHTML = `
-          <strong style="color:#fff;">${m.name}</strong> - <span>${m.dose}</span>
-          <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.1rem;">Schedule: ${m.freq} | Duration: ${m.dur}</div>
-        `;
-        medsPreview.appendChild(item);
-      });
-    }
-  }
-
-  // Refill Close Button
-  const btnClosePhRefill = document.getElementById("btn-close-ph-refill");
-  if (btnClosePhRefill) {
-    btnClosePhRefill.addEventListener("click", () => {
-      activeRefillPatient = null;
-      activeRefillVisit = null;
-      document.getElementById("pharmacy-refill-card").style.display = "none";
-      document.getElementById("pharmacy-refill-placeholder").style.display = "block";
-      refillSearchInput.value = "";
-      refillResultsDiv.innerHTML = "";
-    });
-  }
-
-  // Re-issue Prescription & Add to Pharmacy Queue
-  const btnReissueSubmit = document.getElementById("btn-reissue-submit");
-  if (btnReissueSubmit) {
-    btnReissueSubmit.addEventListener("click", async () => {
-      if (!activeRefillPatient || !activeRefillVisit) return;
-
-      if (activeRefillVisit.medicines.length === 0) {
-        alert("Selected visit has no prescribed medicines to re-issue.");
-        return;
-      }
-
-      // Add new visit by duplication of selected prescription and vitals
-      const currentDateTime = getFormattedDateTime();
-      const newVisit = {
-        date: currentDateTime,
-        examDate: currentDateTime, // directly examined
-        vitals: { ...activeRefillVisit.vitals },
-        symptoms: `Medicine refill requested. Previous symptoms: ${activeRefillVisit.symptoms}`,
-        prevHistory: activeRefillVisit.diagnosis || "",
-        physicalExam: activeRefillVisit.physicalExam || "",
-        diagnosis: activeRefillVisit.diagnosis || "Refill / Re-issue",
-        medicines: activeRefillVisit.medicines.map(m => ({
-          name: m.name,
-          dose: m.dose,
-          freq: m.freq,
-          dur: m.dur,
-          dispensed: false,
-          price: m.price
-        })),
-        reports: [],
-        status: "pending_pharmacy", // Go straight to pharmacy queue
-        needsPharmacy: true,
-        needsRadiology: false,
-        pharmacyDispensed: false,
-        radiologyCompleted: false,
-        consultationPaid: true, // Auto-marked as paid for refill check-ins
-        consultationFee: 500, // Reduced refill desk consultation fee
-        consultationDiscount: 0,
-        medicinesBillPaid: false
-      };
-
-      activeRefillPatient.visits.push(newVisit);
-      activeRefillPatient.logs.push(`Re-issued prescription from visit on ${activeRefillVisit.date} as a new pharmacy order.`);
-      await addLog(`Re-issued medications for patient ${activeRefillPatient.name} (${activeRefillPatient.id}).`, "success");
-
-      await updatePatientRecord(activeRefillPatient);
-      alert(`Prescription successfully re-issued! Patient ${activeRefillPatient.name} has been added back to the Active Pharmacy queue.`);
-      
-      // Switch to active queue tab
-      const activeTab = document.querySelector(".pharmacy-tab[data-tab='active-queue']");
-      if (activeTab) activeTab.click();
-
-      // Close/Reset Refill details
-      document.getElementById("btn-close-ph-refill").click();
-      renderAllQueues();
-    });
-  }
-
-  // Print Refill Prescription
-  const btnPrintRefillRx = document.getElementById("btn-print-refill-rx");
-  if (btnPrintRefillRx) {
-    btnPrintRefillRx.addEventListener("click", () => {
-      if (!activeRefillPatient || !activeRefillVisit) return;
-      triggerPrescriptionPrint(activeRefillPatient, activeRefillVisit);
+          <button class="btn btn-primary btn-sm">Examine</button>
+        </div>
+      `;
+      card.addEventListener("click", () => selectPatientForDoctor(p.id));
+      queueList.appendChild(card);
     });
   }
 }
 
-const customMedsDirectory = [
-  { name: "Rcinex 600", dose: "1 Cap", freq: "1-0-1", dur: "5 Days" },
-  { name: "Combutol 600", dose: "1 Tab", freq: "1-0-0", dur: "7 Days" },
-  { name: "Pyzina 1000", dose: "1 Tab", freq: "1-0-0", dur: "7 Days" },
-  { name: "Allegra-M", dose: "1 Tab", freq: "0-0-1", dur: "5 Days" },
-  { name: "Atarax 10mg", dose: "1 Tab", freq: "0-0-1", dur: "3 Days" },
-  { name: "Panlyco", dose: "1 Cap", freq: "1-0-0", dur: "10 Days" },
-  { name: "Paracetamol 650mg", dose: "1 Tab", freq: "1-1-1", dur: "3 Days" },
-  { name: "Amoxicillin 500mg", dose: "1 Cap", freq: "1-0-1", dur: "5 Days" },
-  { name: "Amlodipine 5mg", dose: "1 Tab", freq: "0-0-1", dur: "30 Days" },
-  { name: "Aspirin 75mg", dose: "1 Tab", freq: "1-0-0", dur: "30 Days" },
-  { name: "Metformin 500mg", dose: "1 Tab", freq: "1-0-1", dur: "30 Days" },
-  { name: "Pantoprazole 40mg", dose: "1 Tab", freq: "1-0-0", dur: "10 Days" },
-  { name: "Azithromycin 500mg", dose: "1 Tab", freq: "1-0-0", dur: "3 Days" },
-  { name: "Cetirizine 10mg", dose: "1 Tab", freq: "0-0-1", dur: "5 Days" }
-];
+function selectPatientForDoctor(patientId) {
+  activeDocPatient = patients.find(p => p.id === patientId);
+  if (!activeDocPatient) return;
 
-let customSelectedMeds = [];
+  const cv = getCurrentVisit(activeDocPatient);
+  document.getElementById("doc-empty-state").style.display = "none";
+  document.getElementById("doc-consultation-form").style.display = "block";
+  document.getElementById("btn-doc-view-history").style.display = "inline-flex";
 
-function renderCustomMedsDirectory() {
-  const list = document.getElementById("pharmacy-med-directory-list");
-  if (!list) return;
-  const searchInput = document.getElementById("pharmacy-med-search");
-  const query = searchInput ? searchInput.value.toLowerCase().trim() : "";
-  list.innerHTML = "";
+  document.getElementById("doc-patient-name").textContent = activeDocPatient.name;
+  document.getElementById("doc-patient-id").textContent = activeDocPatient.id;
+  document.getElementById("doc-p-age-gender").textContent = `${activeDocPatient.age}y / ${activeDocPatient.gender}`;
+  document.getElementById("doc-p-blood").textContent = activeDocPatient.bloodGroup || "O+";
 
-  const filtered = customMedsDirectory.filter(m => m.name.toLowerCase().includes(query));
+  document.getElementById("doc-p-temp").textContent = `${cv.vitals.temp || 98.6}°F`;
+  document.getElementById("doc-p-bp").textContent = cv.vitals.bp || "120/80";
+  document.getElementById("doc-p-pulse").textContent = `${cv.vitals.pulse || 72}bpm`;
 
-  filtered.forEach(m => {
-    const div = document.createElement("div");
-    div.className = "med-item";
-    div.style.cursor = "pointer";
-    div.style.padding = "0.5rem";
-    div.style.background = "rgba(255,255,255,0.02)";
-    div.style.border = "1px solid rgba(255,255,255,0.05)";
-    div.style.borderRadius = "4px";
-    div.style.display = "flex";
-    div.style.alignItems = "center";
-    div.style.justifyContent = "space-between";
-    div.innerHTML = `
-      <div style="flex:1;">
-        <strong style="color:#fff; font-size:0.85rem;">${m.name}</strong>
-        <span style="font-size:0.75rem; color:var(--text-secondary); display:block;">Default: ${m.dose} | ${m.freq} (${m.dur})</span>
-      </div>
-      <button type="button" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding: 0.15rem 0.35rem;"><i data-lucide="plus" style="width:10px; height:10px; vertical-align:middle; margin-right:2px;"></i> Add</button>
-    `;
-    div.addEventListener("click", () => {
-      addCustomPrescriptionMed(m);
-    });
-    list.appendChild(div);
-  });
-  
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
+  document.getElementById("doc-symptoms").value = cv.symptoms || "";
+  document.getElementById("doc-physical-exam").value = cv.physicalExam || "";
+  document.getElementById("doc-diagnosis").value = cv.diagnosis || "";
+
+  currentDocMeds = cv.medicines ? [...cv.medicines] : [];
+  currentDocScans = cv.reports ? [...cv.reports] : [];
+
+  renderDocMedsRows();
+  renderDocOrderedScans();
+  renderDoctorDesk();
 }
 
-function addCustomPrescriptionMed(m) {
-  customSelectedMeds.push({
-    name: m.name,
-    dose: m.dose,
-    freq: m.freq,
-    dur: m.dur
-  });
-  renderCustomSelectedMeds();
-}
-
-function renderCustomSelectedMeds() {
-  const container = document.getElementById("custom-rx-meds-list");
+function renderDocMedsRows() {
+  const container = document.getElementById("doc-meds-container");
   if (!container) return;
   container.innerHTML = "";
 
-  if (customSelectedMeds.length === 0) {
-    container.innerHTML = `<p class="no-data" style="padding: 1rem; font-size: 0.8rem;">Click medicines from the directory on the right to add them here.</p>`;
+  if (currentDocMeds.length === 0) {
+    container.innerHTML = `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">No medications prescribed yet. Search any drug or brand above.</div>`;
     return;
   }
 
-  customSelectedMeds.forEach((m, index) => {
-    const div = document.createElement("div");
-    div.className = "med-item";
-    div.style.padding = "0.5rem";
-    div.style.background = "rgba(255,255,255,0.03)";
-    div.style.border = "1px solid rgba(255,255,255,0.08)";
-    div.style.borderRadius = "4px";
-    div.style.marginBottom = "0.5rem";
-    div.style.display = "flex";
-    div.style.alignItems = "center";
-    div.style.justifyContent = "space-between";
-    div.style.gap = "0.5rem";
+  currentDocMeds.forEach((med, index) => {
+    const row = document.createElement("div");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "2fr 1fr 1fr 1fr auto";
+    row.style.gap = "0.5rem";
+    row.style.marginBottom = "0.5rem";
+    row.style.alignItems = "center";
 
-    div.innerHTML = `
-      <div style="flex:2;">
-        <input type="text" value="${m.name}" style="background:transparent; border:none; color:#fff; font-weight:600; font-size:0.85rem; width:100%;" onchange="updateCustomMedDetail(${index}, 'name', this.value)">
-      </div>
-      <div style="flex:1;">
-        <input type="text" value="${m.dose}" placeholder="Dose" style="background:rgba(15,23,42,0.6); border:1px solid var(--glass-border); border-radius:3px; padding:0.15rem; color:#fff; font-size:0.75rem; width:100%;" onchange="updateCustomMedDetail(${index}, 'dose', this.value)">
-      </div>
-      <div style="flex:1;">
-        <input type="text" value="${m.freq}" placeholder="Freq" style="background:rgba(15,23,42,0.6); border:1px solid var(--glass-border); border-radius:3px; padding:0.15rem; color:#fff; font-size:0.75rem; width:100%;" onchange="updateCustomMedDetail(${index}, 'freq', this.value)">
-      </div>
-      <div style="flex:1;">
-        <input type="text" value="${m.dur}" placeholder="Dur" style="background:rgba(15,23,42,0.6); border:1px solid var(--glass-border); border-radius:3px; padding:0.15rem; color:#fff; font-size:0.75rem; width:100%;" onchange="updateCustomMedDetail(${index}, 'dur', this.value)">
-      </div>
-      <button type="button" class="btn btn-danger btn-sm" style="padding: 0.15rem 0.35rem;" onclick="removeCustomMed(${index})">
-        <i data-lucide="trash-2" style="width:12px; height:12px;"></i>
-      </button>
+    row.innerHTML = `
+      <input type="text" value="${med.name || ''}" placeholder="Medicine Name" class="doc-med-name" data-idx="${index}">
+      <input type="text" value="${med.dose || '500mg'}" placeholder="Dose (500mg)" class="doc-med-dose" data-idx="${index}">
+      <input type="text" value="${med.freq || '1-0-1'}" placeholder="Frequency (1-0-1)" class="doc-med-freq" data-idx="${index}">
+      <input type="text" value="${med.dur || '5 Days'}" placeholder="Duration (5 Days)" class="doc-med-dur" data-idx="${index}">
+      <button type="button" class="btn btn-danger btn-sm btn-remove-med" data-idx="${index}"><i data-lucide="trash-2"></i></button>
     `;
-    container.appendChild(div);
+    container.appendChild(row);
   });
 
-  if (typeof lucide !== "undefined") {
-    lucide.createIcons();
-  }
+  container.querySelectorAll(".btn-remove-med").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-idx"));
+      currentDocMeds.splice(idx, 1);
+      renderDocMedsRows();
+      refreshIcons();
+    });
+  });
+
+  refreshIcons();
 }
 
-window.updateCustomMedDetail = function(index, field, val) {
-  if (customSelectedMeds[index]) {
-    customSelectedMeds[index][field] = val;
-  }
-};
+function renderDocOrderedScans() {
+  const list = document.getElementById("doc-ordered-scans-list");
+  if (!list) return;
+  list.innerHTML = "";
 
-window.removeCustomMed = function(index) {
-  customSelectedMeds.splice(index, 1);
-  renderCustomSelectedMeds();
-};
-
-// Bind custom prescription input, submit, and reset events
-document.addEventListener("DOMContentLoaded", () => {
-  const medSearch = document.getElementById("pharmacy-med-search");
-  if (medSearch) {
-    medSearch.addEventListener("input", renderCustomMedsDirectory);
+  if (currentDocScans.length === 0) {
+    list.innerHTML = `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">No diagnostic tests ordered for this consultation.</div>`;
+    return;
   }
 
-  const customForm = document.getElementById("pharmacy-custom-rx-form");
-  if (customForm) {
-    customForm.addEventListener("submit", (e) => {
+  currentDocScans.forEach((scan, index) => {
+    const pill = document.createElement("span");
+    pill.className = "badge badge-purple";
+    pill.style.padding = "0.4rem 0.8rem";
+    pill.style.marginRight = "0.5rem";
+    pill.style.marginBottom = "0.4rem";
+    pill.innerHTML = `
+      ${scan.name} (₹${scan.price})
+      <i data-lucide="x" class="btn-remove-scan" data-idx="${index}" style="width:12px; height:12px; cursor:pointer; margin-left:4px;"></i>
+    `;
+    list.appendChild(pill);
+  });
+
+  list.querySelectorAll(".btn-remove-scan").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-idx"));
+      currentDocScans.splice(idx, 1);
+      renderDocOrderedScans();
+      refreshIcons();
+    });
+  });
+
+  refreshIcons();
+}
+
+function setupDoctorEvents() {
+  const btnAddMed = document.getElementById("btn-doc-add-med-row");
+  const btnAddScan = document.getElementById("btn-doc-add-scan");
+  const form = document.getElementById("doc-consultation-form");
+  const btnHistory = document.getElementById("btn-doc-view-history");
+  const btnCloseHistory = document.getElementById("btn-close-history");
+
+  if (btnAddMed) {
+    btnAddMed.addEventListener("click", () => {
+      currentDocMeds.push({ name: "", dose: "500mg", freq: "1-0-1", dur: "5 Days", price: 0, dispensed: false });
+      renderDocMedsRows();
+    });
+  }
+
+  if (btnAddScan) {
+    btnAddScan.addEventListener("click", () => {
+      const select = document.getElementById("doc-scan-select");
+      const chosen = select.options[select.selectedIndex];
+      if (!chosen) return;
+
+      const name = chosen.value;
+      const price = parseFloat(chosen.getAttribute("data-price")) || 0;
+      const modality = chosen.getAttribute("data-modality") || "General";
+
+      currentDocScans.push({
+        name,
+        price,
+        modality,
+        status: "pending",
+        findings: "",
+        attachmentUrl: ""
+      });
+      renderDocOrderedScans();
+    });
+  }
+
+  if (btnHistory) {
+    btnHistory.addEventListener("click", () => {
+      if (!activeDocPatient) return;
+      renderLongitudinalHistory(activeDocPatient);
+      document.getElementById("history-modal").classList.add("active");
+    });
+  }
+
+  if (btnCloseHistory) {
+    btnCloseHistory.addEventListener("click", () => {
+      document.getElementById("history-modal").classList.remove("active");
+    });
+  }
+
+  if (form) {
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (customSelectedMeds.length === 0) {
-        alert("Please add at least one medicine to the prescription.");
-        return;
+      if (!activeDocPatient) return;
+
+      // Sync Med inputs
+      const names = document.querySelectorAll(".doc-med-name");
+      const doses = document.querySelectorAll(".doc-med-dose");
+      const freqs = document.querySelectorAll(".doc-med-freq");
+      const durs = document.querySelectorAll(".doc-med-dur");
+
+      const finalMeds = [];
+      names.forEach((nInput, i) => {
+        const val = nInput.value.trim();
+        if (val) {
+          finalMeds.push({
+            name: val,
+            dose: doses[i] ? doses[i].value : "500mg",
+            freq: freqs[i] ? freqs[i].value : "1-0-1",
+            dur: durs[i] ? durs[i].value : "5 Days",
+            price: 0,
+            dispensed: false
+          });
+        }
+      });
+
+      const cv = getCurrentVisit(activeDocPatient);
+      cv.symptoms = document.getElementById("doc-symptoms").value.trim();
+      cv.physicalExam = document.getElementById("doc-physical-exam").value.trim();
+      cv.diagnosis = document.getElementById("doc-diagnosis").value.trim();
+      cv.medicines = finalMeds;
+      cv.reports = currentDocScans;
+      cv.examDate = getFormattedDateTime();
+
+      cv.needsPharmacy = finalMeds.length > 0;
+      cv.needsRadiology = currentDocScans.length > 0;
+
+      if (cv.needsPharmacy) {
+        cv.status = "WAITING_FOR_PHARMACY";
+      } else if (cv.needsRadiology) {
+        cv.status = "WAITING_FOR_RADIOLOGY";
+      } else {
+        cv.status = "COMPLETED";
       }
 
-      const name = document.getElementById("custom-rx-name").value;
-      const age = document.getElementById("custom-rx-age").value;
-      const gender = document.getElementById("custom-rx-gender").value;
-      const bp = document.getElementById("custom-rx-bp").value || "-";
-      const pulse = document.getElementById("custom-rx-pulse").value || "-";
-      const temp = document.getElementById("custom-rx-temp").value || "-";
-      const weight = document.getElementById("custom-rx-weight").value || "-";
-      const diagnosis = document.getElementById("custom-rx-diagnosis").value;
+      activeDocPatient.logs.push(`Consultation completed by doctor. Diagnosis: ${cv.diagnosis}.`);
 
-      const patientObj = {
-        id: "CUSTOM-RX",
-        name,
-        age,
-        gender,
-        phone: "-",
-        bloodGroup: "-"
-      };
+      try {
+        const res = await fetch(`/api/patients/${activeDocPatient.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(activeDocPatient)
+        });
+        if (!res.ok) throw new Error("Failed to save consultation");
 
-      const visitObj = {
-        date: getFormattedDateTime(),
-        vitals: { temp, weight, bp, pulse },
-        symptoms: "Walk-in custom pharmacy prescription.",
-        prevHistory: "-",
-        familyHistory: "-",
-        physicalExam: "-",
-        diagnosis,
-        medicines: customSelectedMeds,
-        reports: []
-      };
-
-      triggerPrescriptionPrint(patientObj, visitObj);
+        showToast("Consultation Saved", `Consultation completed for ${activeDocPatient.name}! Orders routed to pharmacy & radiology.`, "success");
+        activeDocPatient = null;
+        document.getElementById("doc-empty-state").style.display = "block";
+        document.getElementById("doc-consultation-form").style.display = "none";
+        loadInitialData();
+      } catch (err) {
+        showToast("Error Saving Consultation", err.message, "error");
+      }
     });
   }
 
-  const btnCustomRxReset = document.getElementById("btn-custom-rx-reset");
-  if (btnCustomRxReset) {
-    btnCustomRxReset.addEventListener("click", () => {
-      const customForm = document.getElementById("pharmacy-custom-rx-form");
-      if (customForm) customForm.reset();
-      customSelectedMeds = [];
-      renderCustomSelectedMeds();
+  const btnPrintRx = document.getElementById("btn-doc-print-rx");
+  if (btnPrintRx) {
+    btnPrintRx.addEventListener("click", () => {
+      if (!activeDocPatient) {
+        showToast("No Patient Selected", "Please select a patient to print Rx slip.", "info");
+        return;
+      }
+      const cv = getCurrentVisit(activeDocPatient);
+      cv.symptoms = document.getElementById("doc-symptoms").value.trim();
+      cv.physicalExam = document.getElementById("doc-physical-exam").value.trim();
+      cv.diagnosis = document.getElementById("doc-diagnosis").value.trim();
+      printDoctorPrescription(activeDocPatient, cv, currentDocMeds, currentDocScans);
     });
   }
-});
-
-// ==========================================
-// DASHBOARD ANALYTICS & STAFF MANAGEMENT
-// ==========================================
-
-function updateDashboardStats() {
-  const todayPrefix = getFormattedDateTime().split(' ')[0];
-  const registeredCount = patients.filter(p => p.visits && p.visits[0] && p.visits[0].date.startsWith(todayPrefix)).length;
-
-  const activeCount = patients.filter(p => {
-    const cv = getCurrentVisit(p);
-    return cv && cv.status === "WAITING_FOR_DOCTOR";
-  }).length;
-
-  const dischargedCount = patients.filter(p => {
-    const cv = getCurrentVisit(p);
-    return cv && cv.status === "completed";
-  }).length;
-
-  // Receptionist stats elements
-  const registeredEl = document.getElementById("stats-registered");
-  if (registeredEl) registeredEl.textContent = registeredCount;
-
-  const activePatientsEl = document.getElementById("stats-active-patients");
-  if (activePatientsEl) activePatientsEl.textContent = activeCount;
-  
-  const dischargedEl = document.getElementById("stats-discharged");
-  if (dischargedEl) dischargedEl.textContent = dischargedCount;
-
-  // Doctor stats elements
-  const docRegisteredEl = document.getElementById("doc-stats-registered");
-  if (docRegisteredEl) docRegisteredEl.textContent = registeredCount;
-
-  const docActivePatientsEl = document.getElementById("doc-stats-active-patients");
-  if (docActivePatientsEl) docActivePatientsEl.textContent = activeCount;
-  
-  const docDischargedEl = document.getElementById("doc-stats-discharged");
-  if (docDischargedEl) docDischargedEl.textContent = dischargedCount;
 }
 
-async function renderStaffMgmtTable() {
-  const tbody = document.getElementById("staff-table-body");
+function renderLongitudinalHistory(patient) {
+  const container = document.getElementById("history-timeline-container");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!patient.visits || patient.visits.length === 0) {
+    container.innerHTML = `<div style="padding:2rem; text-align:center; color:var(--text-secondary);">No previous treatment history available.</div>`;
+    return;
+  }
+
+  patient.visits.forEach((v, index) => {
+    const item = document.createElement("div");
+    item.className = "timeline-item";
+
+    const medsList = v.medicines && v.medicines.length > 0
+      ? v.medicines.map(m => `• ${m.name} (${m.dose}, ${m.freq}, ${m.dur})`).join("<br>")
+      : "No medicines prescribed.";
+
+    const reportsList = v.reports && v.reports.length > 0
+      ? v.reports.map(r => `• ${r.name} [${r.status}]: ${r.findings || 'Pending'}`).join("<br>")
+      : "No diagnostics ordered.";
+
+    item.innerHTML = `
+      <div style="font-size:0.85rem; font-weight:700; color:var(--primary-purple-dark); margin-bottom:0.25rem;">
+        Visit #${index + 1} — ${v.date} ${v.examDate ? '• Examined: ' + v.examDate : ''}
+      </div>
+      <div style="background:#f8fafc; padding:0.85rem; border-radius:var(--radius-sm); font-size:0.85rem;">
+        <div><strong>Diagnosis:</strong> <span style="color:var(--color-rose); font-weight:700;">${v.diagnosis || 'General Triage'}</span></div>
+        <div style="margin-top:4px;"><strong>Symptoms:</strong> ${v.symptoms || 'None recorded'}</div>
+        <div style="margin-top:4px;"><strong>Physical Exam:</strong> ${v.physicalExam || 'None'}</div>
+        <div style="margin-top:6px; padding-top:6px; border-top:1px dashed #cbd5e1;">
+          <strong>Prescribed Medicines:</strong><br>${medsList}
+        </div>
+        <div style="margin-top:6px; padding-top:6px; border-top:1px dashed #cbd5e1;">
+          <strong>Diagnostic Reports:</strong><br>${reportsList}
+        </div>
+      </div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+// =========================================================================
+// 5. PHARMACY DESK (DIRECT POS BILLING & DISPENSE)
+// =========================================================================
+
+function renderPharmacyDesk() {
+  const queueList = document.getElementById("pharmacy-queue-list");
+  const countBadge = document.getElementById("ph-queue-count");
+  const pharmaPatients = patients.filter(p => {
+    const cv = getCurrentVisit(p);
+    return cv && cv.needsPharmacy && !cv.pharmacyDispensed;
+  });
+
+  if (countBadge) countBadge.textContent = `${pharmaPatients.length} Orders`;
+
+  if (queueList) {
+    queueList.innerHTML = "";
+    if (pharmaPatients.length === 0) {
+      queueList.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-secondary);">No pending pharmacy orders.</div>`;
+      return;
+    }
+
+    pharmaPatients.forEach(p => {
+      const isSelected = activePharmaPatient && activePharmaPatient.id === p.id;
+      const cv = getCurrentVisit(p);
+      const card = document.createElement("div");
+      card.className = `patient-card ${isSelected ? 'active' : ''}`;
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <strong style="color:var(--text-main); font-size:0.95rem;">${p.name}</strong>
+            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
+              ${p.id} • ${cv.medicines ? cv.medicines.length : 0} Medicines
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm">Dispense POS</button>
+        </div>
+      `;
+      card.addEventListener("click", () => selectPatientForPharmacy(p.id));
+      queueList.appendChild(card);
+    });
+  }
+}
+
+function selectPatientForPharmacy(patientId) {
+  activePharmaPatient = patients.find(p => p.id === patientId);
+  if (!activePharmaPatient) return;
+
+  const cv = getCurrentVisit(activePharmaPatient);
+  document.getElementById("ph-empty-state").style.display = "none";
+  document.getElementById("ph-active-container").style.display = "block";
+
+  document.getElementById("ph-patient-name").textContent = activePharmaPatient.name;
+  document.getElementById("ph-patient-id").textContent = activePharmaPatient.id;
+
+  const tableContainer = document.getElementById("ph-meds-table-container");
+  tableContainer.innerHTML = "";
+
+  let total = 0;
+  cv.medicines.forEach((med, i) => {
+    const row = document.createElement("div");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "2fr 1fr 1fr 1fr auto";
+    row.style.gap = "0.75rem";
+    row.style.alignItems = "center";
+    row.style.padding = "0.6rem 0";
+    row.style.borderBottom = "1px solid #f1f5f9";
+
+    // Auto-lookup standard price from master database if 0
+    let itemPrice = med.price;
+    if (!itemPrice || itemPrice === 0) {
+      const matched = masterMedicines.find(m => m.name.toLowerCase() === (med.name || '').toLowerCase());
+      itemPrice = matched ? matched.price : 50;
+      med.price = itemPrice;
+    }
+    total += itemPrice;
+
+    row.innerHTML = `
+      <div><strong>${med.name}</strong> <span style="font-size:0.75rem; color:var(--text-secondary);">(${med.dose})</span></div>
+      <div>${med.freq}</div>
+      <div>${med.dur}</div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <span>₹</span>
+        <input type="number" class="ph-med-price-input" value="${itemPrice}" data-idx="${i}" style="width:80px; font-weight:700;">
+      </div>
+      <button type="button" class="btn btn-danger btn-sm btn-ph-remove-med" data-idx="${i}" style="padding:0.25rem 0.5rem;"><i data-lucide="trash-2" style="width:12px; height:12px;"></i></button>
+    `;
+    tableContainer.appendChild(row);
+  });
+
+  tableContainer.querySelectorAll(".btn-ph-remove-med").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-idx"));
+      cv.medicines.splice(idx, 1);
+      selectPatientForPharmacy(activePharmaPatient.id);
+    });
+  });
+
+  document.getElementById("ph-bill-total").textContent = `₹${total.toFixed(2)}`;
+
+  tableContainer.querySelectorAll(".ph-med-price-input").forEach(input => {
+    input.addEventListener("input", recalculatePharmacyTotal);
+  });
+
+  refreshIcons();
+  renderPharmacyDesk();
+}
+
+function recalculatePharmacyTotal() {
+  const inputs = document.querySelectorAll(".ph-med-price-input");
+  let sum = 0;
+  inputs.forEach(inp => {
+    sum += parseFloat(inp.value) || 0;
+  });
+  document.getElementById("ph-bill-total").textContent = `₹${sum.toFixed(2)}`;
+}
+
+function setupPharmacyEvents() {
+  const pills = document.querySelectorAll("#view-pharmacy .payment-mode-pill");
+  pills.forEach(pill => {
+    pill.addEventListener("click", () => {
+      pills.forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      selectedPharmaPayMode = pill.getAttribute("data-mode");
+    });
+  });
+
+  const btnPrint = document.getElementById("btn-ph-print-receipt");
+  if (btnPrint) {
+    btnPrint.addEventListener("click", () => {
+      if (!activePharmaPatient) {
+        alert("Please select a patient to print invoice.");
+        return;
+      }
+      const cv = getCurrentVisit(activePharmaPatient);
+      const inputs = document.querySelectorAll(".ph-med-price-input");
+      const currentMeds = cv.medicines.map((m, i) => ({
+        ...m,
+        price: parseFloat(inputs[i] ? inputs[i].value : 0) || m.price || 0
+      }));
+      let total = 0;
+      currentMeds.forEach(m => { total += (m.price || 0); });
+      printPharmacyReceipt(activePharmaPatient, cv, currentMeds, total, selectedPharmaPayMode);
+    });
+  }
+
+  const btnSettle = document.getElementById("btn-ph-settle-dispense");
+  if (btnSettle) {
+    btnSettle.addEventListener("click", async () => {
+      if (!activePharmaPatient) return;
+      const cv = getCurrentVisit(activePharmaPatient);
+
+      const inputs = document.querySelectorAll(".ph-med-price-input");
+      const updatedMeds = cv.medicines.map((m, i) => ({
+        ...m,
+        price: parseFloat(inputs[i] ? inputs[i].value : 0) || 0,
+        dispensed: true
+      }));
+
+      try {
+        const res = await fetch(`/api/billing/pharmacy-settle/${activePharmaPatient.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentMode: selectedPharmaPayMode,
+            medicines: updatedMeds
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Pharmacy settlement failed");
+
+        alert(`✓ Pharmacy Payment Collected (₹${data.totalSettled}) via ${selectedPharmaPayMode}. Medicines Dispensed!`);
+        activePharmaPatient = null;
+        document.getElementById("ph-empty-state").style.display = "block";
+        document.getElementById("ph-active-container").style.display = "none";
+        loadInitialData();
+      } catch (err) {
+        alert(`Error: ${err.message}`);
+      }
+    });
+  }
+}
+
+function printPharmacyReceipt(patient, visit, meds, total, payMode) {
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>LifeLine (LHMS) — Pharmacy Tax Invoice</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 25px; color: #1e1b4b; margin: 0; background: #fff; }
+        .receipt-box { max-width: 620px; margin: auto; border: 1px solid #cbd5e1; padding: 25px; border-radius: 12px; }
+        .header { text-align: center; border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 15px; }
+        .header h1 { margin: 0; color: #7c3aed; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+        .header p { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+        .meta { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 15px; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px; }
+        th { background: #ede9fe; color: #6d28d9; text-align: left; padding: 8px; border: 1px solid #cbd5e1; font-weight: 700; }
+        td { padding: 8px; border: 1px solid #cbd5e1; }
+        .total-row { font-size: 16px; font-weight: 800; text-align: right; margin-top: 10px; color: #7c3aed; }
+        .footer { text-align: center; font-size: 11px; color: #94a3b8; margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+      </style>
+    </head>
+    <body>
+      <div class="receipt-box">
+        <div class="header">
+          <h1>LifeLine (LHMS) Hospital</h1>
+          <p>Decentralized Pharmacy & Medical Dispensary Counter</p>
+          <p>GSTIN: 07AAAAA0000A1Z5 • 24x7 Smart Clinical Care</p>
+        </div>
+        <div class="meta">
+          <div>
+            <strong>Patient Name:</strong> ${patient.name}<br>
+            <strong>Patient ID:</strong> ${patient.id} (${patient.age}y / ${patient.gender})<br>
+            <strong>Prescribing Doctor:</strong> Dr. Aditi Chaudhary
+          </div>
+          <div style="text-align: right;">
+            <strong>Invoice No:</strong> PH-${Date.now().toString().slice(-6)}<br>
+            <strong>Date & Time:</strong> ${getFormattedDateTime()}<br>
+            <strong>Payment Mode:</strong> ${payMode} (Settled)
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Medication Name</th>
+              <th>Dosage & Frequency</th>
+              <th>Duration</th>
+              <th style="text-align: right;">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${meds.map((m, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><strong>${m.name}</strong></td>
+                <td>${m.dose || '-'} (${m.freq || '-'})</td>
+                <td>${m.dur || '-'}</td>
+                <td style="text-align: right;">₹${(m.price || 0).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="total-row">
+          Total Amount Settled: ₹${total.toFixed(2)}
+        </div>
+        <div class="footer">
+          ✓ Official Computer Generated Tax Invoice. Medicines once dispensed cannot be returned without original receipt.<br>
+          Thank you for choosing LifeLine Hospital Management System!
+        </div>
+      </div>
+      <script>
+        window.onload = function() { window.print(); }
+      </script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+
+// =========================================================================
+// 6. RADIOLOGY DESK (DIRECT POS BILLING & FINDINGS)
+// =========================================================================
+
+function renderRadiologyDesk() {
+  const queueList = document.getElementById("radiology-queue-list");
+  const countBadge = document.getElementById("rad-queue-count");
+  const radioPatients = patients.filter(p => {
+    const cv = getCurrentVisit(p);
+    return cv && cv.needsRadiology && !cv.radiologyCompleted;
+  });
+
+  if (countBadge) countBadge.textContent = `${radioPatients.length} Scans`;
+
+  if (queueList) {
+    queueList.innerHTML = "";
+    if (radioPatients.length === 0) {
+      queueList.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-secondary);">No pending radiology scans.</div>`;
+      return;
+    }
+
+    radioPatients.forEach(p => {
+      const isSelected = activeRadioPatient && activeRadioPatient.id === p.id;
+      const cv = getCurrentVisit(p);
+      const card = document.createElement("div");
+      card.className = `patient-card ${isSelected ? 'active' : ''}`;
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <strong style="color:var(--text-main); font-size:0.95rem;">${p.name}</strong>
+            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
+              ${p.id} • ${cv.reports ? cv.reports.length : 0} Scans Ordered
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm">Scan POS</button>
+        </div>
+      `;
+      card.addEventListener("click", () => selectPatientForRadiology(p.id));
+      queueList.appendChild(card);
+    });
+  }
+}
+
+function selectPatientForRadiology(patientId) {
+  activeRadioPatient = patients.find(p => p.id === patientId);
+  if (!activeRadioPatient) return;
+
+  const cv = getCurrentVisit(activeRadioPatient);
+  document.getElementById("rad-empty-state").style.display = "none";
+  document.getElementById("rad-active-container").style.display = "block";
+
+  document.getElementById("rad-patient-name").textContent = activeRadioPatient.name;
+  document.getElementById("rad-patient-id").textContent = activeRadioPatient.id;
+
+  const container = document.getElementById("rad-tests-table-container");
+  container.innerHTML = "";
+
+  let total = 0;
+  cv.reports.forEach((rep, i) => {
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "center";
+    row.style.padding = "0.75rem 0";
+    row.style.borderBottom = "1px solid #f1f5f9";
+
+    const price = rep.price > 0 ? rep.price : 500;
+    total += price;
+
+    row.innerHTML = `
+      <div>
+        <strong>${rep.name}</strong>
+        <span class="badge badge-purple" style="margin-left:8px;">${rep.modality || 'Diagnostic'}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <span>₹</span>
+        <input type="number" class="rad-test-price-input" value="${price}" data-idx="${i}" style="width:90px; font-weight:700;">
+      </div>
+    `;
+    container.appendChild(row);
+  });
+
+  document.getElementById("rad-bill-total").textContent = `₹${total.toFixed(2)}`;
+
+  container.querySelectorAll(".rad-test-price-input").forEach(input => {
+    input.addEventListener("input", recalculateRadiologyTotal);
+  });
+
+  renderRadiologyDesk();
+}
+
+function recalculateRadiologyTotal() {
+  const inputs = document.querySelectorAll(".rad-test-price-input");
+  let sum = 0;
+  inputs.forEach(inp => {
+    sum += parseFloat(inp.value) || 0;
+  });
+  document.getElementById("rad-bill-total").textContent = `₹${sum.toFixed(2)}`;
+}
+
+function setupRadiologyEvents() {
+  const pills = document.querySelectorAll("#view-radiology .payment-mode-pill");
+  pills.forEach(pill => {
+    pill.addEventListener("click", () => {
+      pills.forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      selectedRadioPayMode = pill.getAttribute("data-mode");
+    });
+  });
+
+  const btnPrintRad = document.getElementById("btn-rad-print-report");
+  if (btnPrintRad) {
+    btnPrintRad.addEventListener("click", () => {
+      if (!activeRadioPatient) {
+        showToast("No Patient Selected", "Please select a patient to print diagnostic report.", "info");
+        return;
+      }
+      const cv = getCurrentVisit(activeRadioPatient);
+      const findings = document.getElementById("rad-findings-text").value.trim() || "Normal study. Visualized anatomical structures intact within normal limits.";
+      const inputs = document.querySelectorAll(".rad-test-price-input");
+      const currentReports = cv.reports.map((r, i) => ({
+        ...r,
+        price: parseFloat(inputs[i] ? inputs[i].value : 0) || r.price || 500,
+        findings: findings
+      }));
+      let total = 0;
+      currentReports.forEach(r => { total += (r.price || 0); });
+      printRadiologyReport(activeRadioPatient, cv, currentReports, total, selectedRadioPayMode);
+    });
+  }
+
+  const btnSettle = document.getElementById("btn-rad-settle-complete");
+  if (btnSettle) {
+    btnSettle.addEventListener("click", async () => {
+      if (!activeRadioPatient) return;
+      const cv = getCurrentVisit(activeRadioPatient);
+      const findings = document.getElementById("rad-findings-text").value.trim() || "Normal radiological study. No acute abnormalities observed.";
+
+      const inputs = document.querySelectorAll(".rad-test-price-input");
+      const updatedReports = cv.reports.map((r, i) => ({
+        ...r,
+        price: parseFloat(inputs[i] ? inputs[i].value : 0) || 0,
+        findings: findings,
+        status: "completed"
+      }));
+
+      try {
+        const res = await fetch(`/api/billing/radiology-settle/${activeRadioPatient.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentMode: selectedRadioPayMode,
+            reports: updatedReports
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Radiology settlement failed");
+
+        showToast("Diagnostic Fee Settled", `Fee of ₹${data.totalSettled} collected via ${selectedRadioPayMode}. Report signed!`, "success");
+        activeRadioPatient = null;
+        document.getElementById("rad-empty-state").style.display = "block";
+        document.getElementById("rad-active-container").style.display = "none";
+        loadInitialData();
+      } catch (err) {
+        showToast("Settlement Error", err.message, "error");
+      }
+    });
+  }
+}
+
+// =========================================================================
+// 7. CENTRAL PATIENT REGISTRY (EHR)
+// =========================================================================
+
+function renderRegistryDesk() {
+  const tbody = document.getElementById("registry-table-body");
+  const countBadge = document.getElementById("registry-total-count");
+  const searchInput = document.getElementById("registry-search-input");
+  if (!tbody) return;
+
+  const filterQuery = searchInput ? searchInput.value.toLowerCase().trim() : "";
+
+  const filteredPatients = patients.filter(p => {
+    if (!filterQuery) return true;
+    const cv = getCurrentVisit(p);
+    return (
+      p.name.toLowerCase().includes(filterQuery) ||
+      p.id.toLowerCase().includes(filterQuery) ||
+      (p.phone && p.phone.includes(filterQuery)) ||
+      (cv && cv.diagnosis && cv.diagnosis.toLowerCase().includes(filterQuery))
+    );
+  });
+
+  tbody.innerHTML = "";
+  if (countBadge) countBadge.textContent = `${filteredPatients.length} of ${patients.length} Registered Patients`;
+
+  if (filteredPatients.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem;">No matching patient records found.</td></tr>`;
+    return;
+  }
+
+  filteredPatients.forEach(p => {
+    const cv = getCurrentVisit(p);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong style="color:var(--primary-purple);">${p.id}</strong></td>
+      <td><strong>${p.name}</strong></td>
+      <td>${p.age}y / ${p.gender}</td>
+      <td>${p.phone}</td>
+      <td><span class="badge badge-purple">${cv.diagnosis || 'General Triage'}</span></td>
+      <td>${p.visits ? p.visits.length : 1} Visits</td>
+      <td style="text-align:right; display:flex; gap:0.4rem; justify-content:flex-end;">
+        <button class="btn btn-secondary btn-sm btn-reg-history" data-id="${p.id}" title="View Medical History Timeline"><i data-lucide="history"></i> History</button>
+        <button class="btn btn-primary btn-sm btn-reg-print-summary" data-id="${p.id}" title="Print Complete Health Summary"><i data-lucide="printer"></i> EHR Summary</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll(".btn-reg-history").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = patients.find(pat => pat.id === btn.getAttribute("data-id"));
+      if (p) {
+        renderLongitudinalHistory(p);
+        document.getElementById("history-modal").classList.add("active");
+        refreshIcons();
+      }
+    });
+  });
+
+  tbody.querySelectorAll(".btn-reg-print-summary").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = patients.find(pat => pat.id === btn.getAttribute("data-id"));
+      if (p) {
+        printPatientMedicalSummary(p);
+      }
+    });
+  });
+
+  if (searchInput && !searchInput.dataset.hasListener) {
+    searchInput.dataset.hasListener = "true";
+    searchInput.addEventListener("input", () => {
+      renderRegistryDesk();
+    });
+  }
+
+  refreshIcons();
+}
+
+// =========================================================================
+// 8. ADMIN EXECUTIVE PORTAL & STAFF GOVERNANCE
+// =========================================================================
+
+async function renderAdminDesk() {
+  try {
+    const res = await fetch("/api/admin/analytics");
+    if (!res.ok) throw new Error("Failed to fetch admin analytics");
+    const data = await res.json();
+
+    document.getElementById("admin-stat-patients").textContent = (data.totalPatients || 0).toLocaleString();
+    document.getElementById("admin-stat-consultations").textContent = (data.totalConsultations || 0).toLocaleString();
+    document.getElementById("admin-stat-staff").textContent = data.totalStaff || 5;
+    document.getElementById("admin-stat-rooms").textContent = data.rooms || 24;
+
+    document.getElementById("admin-rev-consult").textContent = `₹${(data.revenue.consultation || 0).toLocaleString()}`;
+    document.getElementById("admin-rev-pharma").textContent = `₹${(data.revenue.pharmacy || 0).toLocaleString()}`;
+    document.getElementById("admin-rev-radio").textContent = `₹${(data.revenue.radiology || 0).toLocaleString()}`;
+    document.getElementById("admin-total-revenue").textContent = `₹${(data.revenue.total || 0).toLocaleString()}`;
+
+    // Render Doctor List Widget
+    const docListContainer = document.getElementById("admin-doctor-list");
+    if (docListContainer) {
+      docListContainer.innerHTML = "";
+      const doctorsList = data.doctors || masterDoctors || [];
+      doctorsList.forEach(doc => {
+        const item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.gap = "0.85rem";
+        item.style.padding = "0.65rem 0.5rem";
+        item.style.borderRadius = "var(--radius-sm)";
+        item.style.borderBottom = "1px solid rgba(0,0,0,0.04)";
+
+        const docAvatar = doc.image && doc.image.trim() !== '' 
+          ? doc.image 
+          : getClientAnimatedAvatar(doc.name, doc.gender || (doc.name.toLowerCase().includes('aditi') || doc.name.toLowerCase().includes('carla') || doc.name.toLowerCase().includes('hanna') ? 'Female' : 'Male'));
+
+        const isAvail = (doc.status || 'Available').toLowerCase() === 'available';
+
+        item.innerHTML = `
+          <img src="${docAvatar}" alt="${doc.name}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--primary-purple-soft); background:#fff; flex-shrink:0;">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <strong style="color:var(--text-main); font-size:0.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${doc.name}</strong>
+              <span class="badge" style="font-size:0.65rem; padding:1px 6px; background:${isAvail ? '#ecfdf5' : '#fff1f2'}; color:${isAvail ? '#059669' : '#e11d48'};">${doc.status || 'On Duty'}</span>
+            </div>
+            <span style="font-size:0.75rem; color:var(--text-secondary); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${doc.specialty} • ${doc.room || 'Room 101'}</span>
+          </div>
+          <span class="badge badge-purple" style="font-size:0.7rem; flex-shrink:0;">⭐ ${doc.rating || '5.0'}</span>
+        `;
+        docListContainer.appendChild(item);
+      });
+    }
+
+    // Render Recent Patients Table
+    const recentTbody = document.getElementById("admin-recent-patients-tbody");
+    if (recentTbody) {
+      recentTbody.innerHTML = "";
+      (data.recentPatients || []).forEach(rp => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${rp.date}</td>
+          <td><strong>${rp.name}</strong></td>
+          <td>${rp.age}</td>
+          <td><span class="badge badge-purple">${rp.diagnosis}</span></td>
+          <td style="text-align:right;"><span class="badge badge-success">${rp.room}</span></td>
+        `;
+        recentTbody.appendChild(tr);
+      });
+    }
+
+    // Render Staff Table
+    renderAdminStaffTable();
+  } catch (err) {
+    console.error("Admin render failed:", err);
+  }
+}
+
+async function renderAdminStaffTable() {
+  const tbody = document.getElementById("admin-staff-table-body");
   if (!tbody) return;
   tbody.innerHTML = "";
 
@@ -3361,173 +1760,387 @@ async function renderStaffMgmtTable() {
     if (!res.ok) throw new Error("Failed to fetch users");
     const users = await res.json();
 
-    if (users.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="4" class="no-data" style="text-align:center; padding: 2rem;">No staff users registered.</td>
-        </tr>
-      `;
-      return;
-    }
-
     users.forEach(u => {
       const tr = document.createElement("tr");
-      tr.style.borderBottom = "1px solid var(--glass-border)";
-      tr.style.color = "var(--text-secondary)";
-
-      // Format role nicely
-      let roleDisplay = u.role.charAt(0).toUpperCase() + u.role.slice(1);
-      if (u.role === "doctor") roleDisplay = "Doctor / Medical Specialist";
-      else if (u.role === "receptionist") roleDisplay = "Reception Desk Staff";
-      else if (u.role === "pharmacist") roleDisplay = "Pharmacist / Chemist";
-      else if (u.role === "radiologist") roleDisplay = "Radiology Lab Tech";
-
-      // Hide delete button for self or default doctor account
-      const isSelf = currentUser && currentUser.username.toLowerCase() === u.username.toLowerCase();
       const isPrimaryDoctor = u.username.toLowerCase() === "doctor";
-      
+      const isSelf = currentUser && currentUser.username.toLowerCase() === u.username.toLowerCase();
+
       let actionHtml = "";
       if (isSelf) {
-        actionHtml = `<span style="font-size:0.8rem; color:var(--color-success); font-weight:600; padding:0.4rem 0.85rem; display:inline-block;">✓ You (Current Session)</span>`;
+        actionHtml = `<span style="font-size:0.75rem; color:var(--color-emerald); font-weight:700;">✓ Current Session</span>`;
       } else if (isPrimaryDoctor) {
-        actionHtml = `<span style="font-size:0.8rem; color:var(--text-muted); font-style:italic; padding:0.4rem 0.85rem; display:inline-block;">System Owner</span>`;
+        actionHtml = `<span style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">System Admin</span>`;
       } else {
-        actionHtml = `<button class="btn btn-danger btn-sm btn-delete-staff" data-username="${u.username}"><i data-lucide="trash-2" style="width:12px; height:12px;"></i> Remove Staff</button>`;
+        actionHtml = `<button class="btn btn-danger btn-sm btn-delete-staff" data-username="${u.username}"><i data-lucide="trash-2"></i> Remove</button>`;
       }
 
+      const avatarSrc = u.image || getClientAnimatedAvatar(u.name, u.gender);
+
       tr.innerHTML = `
-        <td style="padding: 1rem; font-weight:600; color:#fff;">${u.name}</td>
-        <td style="padding: 1rem; font-family: monospace; font-weight:600; color:var(--color-cyan);">${u.username}</td>
-        <td style="padding: 1rem;">${roleDisplay}</td>
-        <td style="padding: 1rem; text-align: right;">${actionHtml}</td>
+        <td>
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <img src="${avatarSrc}" alt="${u.name}" style="width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid var(--primary-purple-soft); background:#fff;">
+            <div>
+              <strong style="color:var(--text-main); font-size:0.9rem; display:block;">${u.name}</strong>
+              <span style="font-size:0.75rem; color:var(--text-secondary);">${u.phone || 'No phone recorded'}</span>
+            </div>
+          </div>
+        </td>
+        <td><code style="color:var(--primary-purple); font-weight:700;">${u.username}</code></td>
+        <td><span class="badge badge-purple">${u.role.toUpperCase()}</span></td>
+        <td><span class="badge" style="background:#f1f5f9; color:var(--text-main); font-weight:600;">${u.gender || 'Female'}</span></td>
+        <td>
+          <div style="font-size:0.82rem; font-weight:600; color:var(--text-main);">${u.specialty || 'General Staff'}</div>
+          <div style="font-size:0.75rem; color:var(--text-secondary);">${u.room || 'Main Clinic'}</div>
+        </td>
+        <td style="text-align:right;">${actionHtml}</td>
       `;
       tbody.appendChild(tr);
     });
 
-    // Attach click listeners to delete buttons
-    document.querySelectorAll(".btn-delete-staff").forEach(btn => {
+    tbody.querySelectorAll(".btn-delete-staff").forEach(btn => {
       btn.addEventListener("click", async () => {
         const username = btn.getAttribute("data-username");
-        if (confirm(`Are you sure you want to remove staff user '${username}'? This action cannot be undone.`)) {
+        if (confirm(`Are you sure you want to remove staff account '${username}'?`)) {
           try {
-            const deleteRes = await fetch(`/api/auth/users/${username}`, {
-              method: "DELETE"
-            });
-            const data = await deleteRes.json();
-            if (!deleteRes.ok) {
-              throw new Error(data.error || "Failed to delete user");
-            }
-            alert(`Staff user '${username}' removed successfully.`);
-            await addLog(`Staff user removed by Doctor: ${username}`, "warning");
-            renderStaffMgmtTable();
-          } catch (err) {
-            alert(`Error: ${err.message}`);
+            await fetch(`/api/auth/users/${username}`, { method: "DELETE" });
+            showToast("Staff Removed", `Account '${username}' deleted successfully.`, "info");
+            renderAdminStaffTable();
+          } catch (e) {
+            showToast("Deletion Error", e.message, "error");
           }
         }
       });
     });
 
-    if (typeof lucide !== "undefined") {
-      lucide.createIcons();
-    }
+    refreshIcons();
   } catch (err) {
-    console.error("Error rendering staff registry:", err);
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="4" class="no-data" style="text-align:center; padding: 2rem; color: var(--color-danger);">Failed to load staff list.</td>
-      </tr>
-    `;
+    console.error("Staff table render failed:", err);
   }
 }
 
-let pollIntervalId = null;
-
-function startPollingUpdates() {
-  if (pollIntervalId) {
-    clearInterval(pollIntervalId);
-  }
-  // Poll every 5 seconds
-  pollIntervalId = setInterval(async () => {
-    // Only poll if a user is logged in
-    if (!currentUser) return;
-    
-    // Prevent polling if we are currently editing/typing in active inputs on forms!
-    const activeElement = document.activeElement;
-    const isEditing = activeElement && (
-      activeElement.tagName === 'INPUT' || 
-      activeElement.tagName === 'TEXTAREA' || 
-      activeElement.tagName === 'SELECT'
-    );
-    if (isEditing) {
-      // Skip rendering if user is actively typing, but we can still fetch patients in memory
-      try {
-        const pResponse = await fetch('/api/patients');
-        if (pResponse.ok) {
-          patients = await pResponse.json();
-          upgradeDatabaseSchema();
-        }
-      } catch (e) {
-        console.warn("Silent polling sync failed:", e);
+function setupAdminEvents() {
+  const btnAdd = document.getElementById("btn-admin-add-staff");
+  if (btnAdd) {
+    btnAdd.addEventListener("click", () => {
+      const tabRegister = document.getElementById("tab-register");
+      const overlay = document.getElementById("auth-modal-overlay");
+      if (tabRegister && overlay) {
+        tabRegister.click();
+        overlay.classList.add("active");
       }
-      return;
-    }
+    });
+  }
 
+  const btnResetDb = document.getElementById("btn-admin-reset-db");
+  if (btnResetDb) {
+    btnResetDb.addEventListener("click", async () => {
+      if (confirm("Reset database to demo fixtures and baseline accounts?")) {
+        try {
+          const res = await fetch("/api/reset-db", { method: "POST" });
+          if (!res.ok) throw new Error("Reset failed");
+          showToast("Database Reset", "System database restored to demo fixtures successfully.", "success");
+          loadInitialData();
+        } catch (e) {
+          showToast("Reset Failed", e.message, "error");
+        }
+      }
+    });
+  }
+}
+
+function printDoctorPrescription(patient, visit, meds, scans) {
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>LifeLine (LHMS) — Doctor Prescription Slip (Rx)</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 30px; color: #1e1b4b; margin: 0; background: #fff; }
+        .rx-box { max-width: 680px; margin: auto; border: 1px solid #cbd5e1; padding: 30px; border-radius: 12px; }
+        .header { text-align: center; border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 20px; }
+        .header h1 { margin: 0; color: #7c3aed; font-size: 24px; font-weight: 800; }
+        .header p { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; font-size: 13px; margin-bottom: 15px; }
+        .vitals-row { font-size: 12px; color: #475569; margin-bottom: 15px; padding: 8px 12px; background: #ede9fe; border-radius: 6px; }
+        .section-title { font-size: 14px; font-weight: 700; color: #7c3aed; margin-bottom: 8px; margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px; }
+        th { background: #ede9fe; color: #6d28d9; text-align: left; padding: 8px; border: 1px solid #cbd5e1; font-weight: 700; }
+        td { padding: 8px; border: 1px solid #cbd5e1; }
+        .sign-area { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 1px dashed #cbd5e1; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="rx-box">
+        <div class="header">
+          <h1>LifeLine (LHMS) Medical Hospital</h1>
+          <p>Department of Internal Medicine & Clinical Consultations</p>
+          <p>Consulting Physician: Dr. Aditi Chaudhary, MBBS, MD</p>
+        </div>
+        <div class="meta-grid">
+          <div>
+            <strong>Patient Name:</strong> ${patient.name}<br>
+            <strong>Patient ID:</strong> ${patient.id} (${patient.age}y / ${patient.gender})<br>
+            <strong>Blood Group:</strong> ${patient.bloodGroup || 'O+'} | <strong>Contact:</strong> ${patient.phone}
+          </div>
+          <div style="text-align: right;">
+            <strong>Prescription Date:</strong> ${getFormattedDateTime()}<br>
+            <strong>Clinical Diagnosis:</strong> <span style="color:#e11d48; font-weight:bold;">${visit.diagnosis || 'General Triage'}</span>
+          </div>
+        </div>
+
+        <div class="vitals-row">
+          <strong>Vitals:</strong> Temp: ${visit.vitals ? visit.vitals.temp : 98.6}°F | BP: ${visit.vitals ? visit.vitals.bp : '120/80'} | Pulse: ${visit.vitals ? visit.vitals.pulse : 72}bpm | Weight: ${visit.vitals ? visit.vitals.weight : 68}kg
+        </div>
+
+        <div>
+          <strong>Chief Complaints:</strong> ${visit.symptoms || 'None recorded'}<br>
+          <strong>Physical Examination:</strong> ${visit.physicalExam || 'Within normal clinical limits'}
+        </div>
+
+        <div class="section-title">℞ Prescribed Medications (Direct to Pharmacy Desk)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Medication Name</th>
+              <th>Dosage</th>
+              <th>Frequency</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${meds && meds.length > 0 ? meds.map((m, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><strong>${m.name}</strong></td>
+                <td>${m.dose || '-'}</td>
+                <td>${m.freq || '-'}</td>
+                <td>${m.dur || '-'}</td>
+              </tr>
+            `).join('') : `<tr><td colspan="5" style="text-align:center; color:#94a3b8;">No medications prescribed.</td></tr>`}
+          </tbody>
+        </table>
+
+        ${scans && scans.length > 0 ? `
+          <div class="section-title">🔬 Ordered Diagnostic Investigations</div>
+          <ul>
+            ${scans.map(s => `<li><strong>${s.name}</strong> (${s.modality || 'Diagnostic'})</li>`).join('')}
+          </ul>
+        ` : ''}
+
+        <div class="sign-area">
+          <div>
+            <em>Follow up in 5 days or if symptoms persist.</em>
+          </div>
+          <div style="text-align: right;">
+            <strong>Dr. Aditi Chaudhary</strong><br>
+            Reg. No: MED-884920<br>
+            <em>LifeLine Medical Centre</em>
+          </div>
+        </div>
+      </div>
+      <script>
+        window.onload = function() { window.print(); }
+      </script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+
+function printRadiologyReport(patient, visit, reports, total, payMode) {
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>LifeLine (LHMS) — Diagnostic Imaging & Pathology Report</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 30px; color: #1e1b4b; margin: 0; background: #fff; }
+        .report-box { max-width: 680px; margin: auto; border: 1px solid #cbd5e1; padding: 30px; border-radius: 12px; }
+        .header { text-align: center; border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 20px; }
+        .header h1 { margin: 0; color: #7c3aed; font-size: 24px; font-weight: 800; }
+        .header p { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; }
+        .section-title { font-size: 14px; font-weight: 700; color: #7c3aed; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+        .findings-box { background: #faf5ff; border: 1px solid #ede9fe; padding: 15px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px; }
+        th { background: #ede9fe; color: #6d28d9; text-align: left; padding: 8px; border: 1px solid #cbd5e1; font-weight: 700; }
+        td { padding: 8px; border: 1px solid #cbd5e1; }
+        .sign-area { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 1px dashed #cbd5e1; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="report-box">
+        <div class="header">
+          <h1>LifeLine (LHMS) Hospital</h1>
+          <p>Department of Radiodiagnosis, Imaging & Clinical Pathology</p>
+          <p>NABH Accredited Tertiary Medical Centre • 24x7 Diagnostics</p>
+        </div>
+        <div class="meta-grid">
+          <div>
+            <strong>Patient Name:</strong> ${patient.name}<br>
+            <strong>Patient ID:</strong> ${patient.id} (${patient.age}y / ${patient.gender})<br>
+            <strong>Contact:</strong> ${patient.phone} | <strong>Blood Group:</strong> ${patient.bloodGroup || 'O+'}
+          </div>
+          <div style="text-align: right;">
+            <strong>Report ID:</strong> RAD-${Date.now().toString().slice(-6)}<br>
+            <strong>Date:</strong> ${getFormattedDateTime()}<br>
+            <strong>Payment Mode:</strong> ${payMode} (Settled Fee: ₹${total.toFixed(2)})
+          </div>
+        </div>
+
+        <div class="section-title">Investigations Conducted</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Test / Investigation Name</th>
+              <th>Modality</th>
+              <th style="text-align: right;">Fee (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reports.map((r, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><strong>${r.name}</strong></td>
+                <td>${r.modality || 'Diagnostic'}</td>
+                <td style="text-align: right;">₹${(r.price || 0).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="section-title">Radiologist Clinical Impression & Findings</div>
+        <div class="findings-box">
+          ${reports[0] && reports[0].findings ? reports[0].findings : "Normal radiological study. Heart size within normal physiological limits. Lung fields clear bilaterally. Visualized bony thorax intact. No acute focal lesion observed."}
+        </div>
+
+        <div class="sign-area">
+          <div>
+            <strong>Radiology Tech:</strong> Verified<br>
+            <strong>Department:</strong> Radiodiagnosis
+          </div>
+          <div style="text-align: right;">
+            <strong>Reporting Radiologist:</strong> Dr. R. K. Saxena, MD (Radiodiagnosis)<br>
+            <em>LifeLine Medicare Diagnostic Centre</em>
+          </div>
+        </div>
+      </div>
+      <script>
+        window.onload = function() { window.print(); }
+      </script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+
+function printPatientMedicalSummary(patient) {
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>LifeLine (LHMS) — Complete Patient Health Record</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 30px; color: #1e1b4b; margin: 0; background: #fff; }
+        .summary-box { max-width: 720px; margin: auto; border: 1px solid #cbd5e1; padding: 30px; border-radius: 12px; }
+        .header { text-align: center; border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 20px; }
+        .header h1 { margin: 0; color: #7c3aed; font-size: 24px; font-weight: 800; }
+        .header p { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; }
+        .visit-block { background: #faf5ff; border: 1px solid #ede9fe; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; }
+      </style>
+    </head>
+    <body>
+      <div class="summary-box">
+        <div class="header">
+          <h1>LifeLine (LHMS) Hospital</h1>
+          <p>Central Electronic Health Records (EHR) & Longitudinal Medical Summary</p>
+        </div>
+        <div class="meta-grid">
+          <div>
+            <strong>Patient Name:</strong> ${patient.name}<br>
+            <strong>Patient ID:</strong> ${patient.id} (${patient.age}y / ${patient.gender})<br>
+            <strong>Contact:</strong> ${patient.phone} | <strong>Blood Group:</strong> ${patient.bloodGroup || 'O+'}
+          </div>
+          <div style="text-align: right;">
+            <strong>Generated Date:</strong> ${getFormattedDateTime()}<br>
+            <strong>Total Lifetime Visits:</strong> ${patient.visits ? patient.visits.length : 1}
+          </div>
+        </div>
+
+        <h3 style="color:#7c3aed; font-size:15px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">Longitudinal Clinical Encounters</h3>
+        ${patient.visits && patient.visits.length > 0 ? patient.visits.map((v, i) => `
+          <div class="visit-block">
+            <div style="display:flex; justify-content:space-between; font-weight:bold; color:#6d28d9; margin-bottom:6px;">
+              <span>Encounter #${i + 1} — ${v.date}</span>
+              <span style="color:#e11d48;">${v.diagnosis || 'Triage'}</span>
+            </div>
+            <div><strong>Symptoms:</strong> ${v.symptoms || 'None'} | <strong>Exam:</strong> ${v.physicalExam || 'Normal'}</div>
+            <div style="margin-top:4px;"><strong>Vitals:</strong> Temp: ${v.vitals ? v.vitals.temp : 98.6}°F, BP: ${v.vitals ? v.vitals.bp : '120/80'}, Pulse: ${v.vitals ? v.vitals.pulse : 72}bpm</div>
+            <div style="margin-top:6px; border-top:1px dashed #cbd5e1; padding-top:6px;">
+              <strong>Prescribed Meds:</strong> ${v.medicines && v.medicines.length > 0 ? v.medicines.map(m => `${m.name} (${m.dose}, ${m.dur})`).join(', ') : 'None'}<br>
+              <strong>Investigations:</strong> ${v.reports && v.reports.length > 0 ? v.reports.map(r => `${r.name} [${r.status}]`).join(', ') : 'None'}
+            </div>
+          </div>
+        `).join('') : '<p>No recorded visits.</p>'}
+
+        <div style="text-align:center; font-size:11px; color:#94a3b8; margin-top:25px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+          Certified True Record from LifeLine Hospital Management System EHR Repository.
+        </div>
+      </div>
+      <script>
+        window.onload = function() { window.print(); }
+      </script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+
+// =========================================================================
+// 9. APP ENTRY POINT
+// =========================================================================
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupAuth();
+  setupNavigation();
+  setupReceptionEvents();
+  setupDoctorEvents();
+  setupPharmacyEvents();
+  setupRadiologyEvents();
+  setupAdminEvents();
+  setupDrugCatalogModal();
+
+  const globalSearch = document.getElementById("global-patient-search");
+  if (globalSearch) {
+    globalSearch.addEventListener("input", () => {
+      const q = globalSearch.value.toLowerCase().trim();
+      if (q.length > 0) {
+        switchView("registry");
+        const regInput = document.getElementById("registry-search-input");
+        if (regInput) {
+          regInput.value = q;
+          renderRegistryDesk();
+        }
+      }
+    });
+  }
+
+  const savedUser = localStorage.getItem("lifeline_user");
+  if (savedUser) {
     try {
-      const pResponse = await fetch('/api/patients');
-      if (pResponse.ok) {
-        const newPatients = await pResponse.json();
-        
-        // Simple optimization: only render if the data has actually changed!
-        const patientsChanged = JSON.stringify(newPatients) !== JSON.stringify(patients);
-        if (patientsChanged) {
-          patients = newPatients;
-          upgradeDatabaseSchema();
-          renderAllQueues();
-          
-          // Re-render active patient cards if they are set
-          if (activePharmacyPatient) {
-            const updatedPhPat = patients.find(pat => pat.id === activePharmacyPatient.id);
-            if (updatedPhPat) {
-              activePharmacyPatient = updatedPhPat;
-              selectPatientForPharmacy(updatedPhPat.id);
-            }
-          }
-          if (activeBillingPatient) {
-            const updatedBillPat = patients.find(pat => pat.id === activeBillingPatient.id);
-            if (updatedBillPat) {
-              activeBillingPatient = updatedBillPat;
-              selectPatientForBilling(updatedBillPat.id);
-            }
-          }
-          if (activeConsultationPatient) {
-            const updatedConsPat = patients.find(pat => pat.id === activeConsultationPatient.id);
-            if (updatedConsPat) {
-              activeConsultationPatient = updatedConsPat;
-              selectPatientForConsultation(updatedConsPat.id);
-            }
-          }
-          if (activeRadiologyPatient) {
-            const updatedRadPat = patients.find(pat => pat.id === activeRadiologyPatient.id);
-            if (updatedRadPat) {
-              activeRadiologyPatient = updatedRadPat;
-              selectPatientForRadiology(updatedRadPat.id);
-            }
-          }
-
-          const activeNav = document.querySelector(".nav-item.active");
-          if (activeNav) {
-            const currentView = activeNav.getAttribute("data-view");
-            if (currentView === "registry") {
-              renderRegistryTable();
-            } else if (currentView === "staff-mgmt") {
-              renderStaffMgmtTable();
-            }
-          }
-          console.log("Real-time queues updated via polling.");
-        }
-      }
-    } catch (err) {
-      console.warn("Polling updates failed:", err);
+      currentUser = JSON.parse(savedUser);
+      initUserSession();
+    } catch {
+      localStorage.removeItem("lifeline_user");
     }
-  }, 5000);
-}
+  }
+
+  refreshIcons();
+});
