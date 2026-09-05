@@ -13,7 +13,7 @@
 
 ## 🌟 Live Public Demo & Instant Access
 
-- 🌐 **Instant Live Link**: [https://76e3c5b2644689.lhr.life](https://76e3c5b2644689.lhr.life) *(Accessible on any mobile or desktop browser worldwide)*
+- 🌐 **Instant Live Link**: [https://76e3c5b2644689.lhr.life](https://hospital-managementhospital-management.onrender.com) *(Accessible on any mobile or desktop browser worldwide)*
 
 ### 🔑 Demo Credentials
 
